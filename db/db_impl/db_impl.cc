@@ -101,6 +101,8 @@
 #include "util/stop_watch.h"
 #include "util/string_util.h"
 
+#include "db/fh.h" //cgmin fh
+
 namespace ROCKSDB_NAMESPACE {
 
 const std::string kDefaultColumnFamilyName("default");

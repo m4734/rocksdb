@@ -177,8 +177,7 @@ Status DBImpl::WriteImpl(const WriteOptions& write_options,
           &trim_history_scheduler_,
           write_options.ignore_missing_column_families, 0 /*log_number*/, this,
           true /*concurrent_memtable_writes*/, seq_per_batch_, w.batch_cnt,
-          batch_per_txn_, write_options.memtable_insert_hint_per_batch);
-
+          batch_per_txn_, write_options.memtable_insert_hint_per_batch,&fh); //cgmin fhp
       PERF_TIMER_START(write_pre_and_post_process_time);
     }
 
@@ -376,7 +375,6 @@ Status DBImpl::WriteImpl(const WriteOptions& write_options,
 
     if (status.ok()) {
       PERF_TIMER_GUARD(write_memtable_time);
-
       if (!parallel) {
         // w.sequence will be set inside InsertInto
         w.status = WriteBatchInternal::InsertInto(
@@ -384,12 +382,11 @@ Status DBImpl::WriteImpl(const WriteOptions& write_options,
             &flush_scheduler_, &trim_history_scheduler_,
             write_options.ignore_missing_column_families,
             0 /*recovery_log_number*/, this, parallel, seq_per_batch_,
-            batch_per_txn_);
+            batch_per_txn_,&fh); //cgmin fhp
       } else {
         write_group.last_sequence = last_sequence;
         write_thread_.LaunchParallelMemTableWriters(&write_group);
         in_parallel_group = true;
-
         // Each parallel follower is doing each own writes. The leader should
         // also do its own.
         if (w.ShouldWriteToMemtable()) {
@@ -402,7 +399,7 @@ Status DBImpl::WriteImpl(const WriteOptions& write_options,
               write_options.ignore_missing_column_families, 0 /*log_number*/,
               this, true /*concurrent_memtable_writes*/, seq_per_batch_,
               w.batch_cnt, batch_per_txn_,
-              write_options.memtable_insert_hint_per_batch);
+              write_options.memtable_insert_hint_per_batch,&fh); //cgmin fhp
         }
       }
       if (seq_used != nullptr) {
@@ -566,7 +563,7 @@ Status DBImpl::PipelinedWriteImpl(const WriteOptions& write_options,
           memtable_write_group, w.sequence, column_family_memtables_.get(),
           &flush_scheduler_, &trim_history_scheduler_,
           write_options.ignore_missing_column_families, 0 /*log_number*/, this,
-          false /*concurrent_memtable_writes*/, seq_per_batch_, batch_per_txn_);
+          false /*concurrent_memtable_writes*/, seq_per_batch_, batch_per_txn_,&fh); //cgmin fhp
       versions_->SetLastSequence(memtable_write_group.last_sequence);
       write_thread_.ExitAsMemTableWriter(&w, memtable_write_group);
     }
@@ -581,7 +578,7 @@ Status DBImpl::PipelinedWriteImpl(const WriteOptions& write_options,
         &trim_history_scheduler_, write_options.ignore_missing_column_families,
         0 /*log_number*/, this, true /*concurrent_memtable_writes*/,
         false /*seq_per_batch*/, 0 /*batch_cnt*/, true /*batch_per_txn*/,
-        write_options.memtable_insert_hint_per_batch);
+        write_options.memtable_insert_hint_per_batch,&fh); //cgmin fhp
     if (write_thread_.CompleteParallelMemTableWriter(&w)) {
       MemTableInsertStatusCheck(w.status);
       versions_->SetLastSequence(w.write_group->last_sequence);
@@ -621,7 +618,7 @@ Status DBImpl::UnorderedWriteMemtable(const WriteOptions& write_options,
         &trim_history_scheduler_, write_options.ignore_missing_column_families,
         0 /*log_number*/, this, true /*concurrent_memtable_writes*/,
         seq_per_batch_, sub_batch_cnt, true /*batch_per_txn*/,
-        write_options.memtable_insert_hint_per_batch);
+        write_options.memtable_insert_hint_per_batch,&fh); //cgmin fhp
 
     WriteStatusCheck(w.status);
     if (write_options.disableWAL) {
@@ -1159,7 +1156,7 @@ Status DBImpl::WriteRecoverableState() {
         &cached_recoverable_state_, column_family_memtables_.get(),
         &flush_scheduler_, &trim_history_scheduler_, true,
         0 /*recovery_log_number*/, this, false /* concurrent_memtable_writes */,
-        &next_seq, &dont_care_bool, seq_per_batch_);
+        &next_seq, &dont_care_bool, seq_per_batch_, true, &fh); //cgmin fhp
     auto last_seq = next_seq - 1;
     if (two_write_queues_) {
       versions_->FetchAddLastAllocatedSequence(last_seq - seq);

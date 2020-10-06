@@ -62,6 +62,8 @@
 #include "util/stop_watch.h"
 #include "util/thread_local.h"
 
+#include "db/fh.h" //cgmin fh
+
 namespace ROCKSDB_NAMESPACE {
 
 class Arena;
@@ -78,6 +80,8 @@ class WriteCallback;
 struct JobContext;
 struct ExternalSstFileInfo;
 struct MemTableInfo;
+
+class FH; //cgmin fh
 
 // Class to maintain directories for all database paths other than main one.
 class Directories {
@@ -998,6 +1002,8 @@ class DBImpl : public DB {
   std::unique_ptr<Tracer> tracer_;
   InstrumentedMutex trace_mutex_;
   BlockCacheTracer block_cache_tracer_;
+
+	FH fh; //cgmin fh
 
   // State below is protected by mutex_
   // With two_write_queues enabled, some of the variables that accessed during

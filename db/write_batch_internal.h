@@ -18,6 +18,8 @@
 #include "rocksdb/write_batch.h"
 #include "util/autovector.h"
 
+#include "db/fh.h" //cgmin fh
+
 namespace ROCKSDB_NAMESPACE {
 
 class MemTable;
@@ -167,7 +169,7 @@ class WriteBatchInternal {
       TrimHistoryScheduler* trim_history_scheduler,
       bool ignore_missing_column_families = false, uint64_t log_number = 0,
       DB* db = nullptr, bool concurrent_memtable_writes = false,
-      bool seq_per_batch = false, bool batch_per_txn = true);
+      bool seq_per_batch = false, bool batch_per_txn = true, FH *fhp = nullptr); //cgmin fhp
 
   // Convenience form of InsertInto when you have only one batch
   // next_seq returns the seq after last sequence number used in MemTable insert
@@ -178,7 +180,7 @@ class WriteBatchInternal {
       bool ignore_missing_column_families = false, uint64_t log_number = 0,
       DB* db = nullptr, bool concurrent_memtable_writes = false,
       SequenceNumber* next_seq = nullptr, bool* has_valid_writes = nullptr,
-      bool seq_per_batch = false, bool batch_per_txn = true);
+      bool seq_per_batch = false, bool batch_per_txn = true, FH *fhp = nullptr); //cgmin fhp
 
   static Status InsertInto(WriteThread::Writer* writer, SequenceNumber sequence,
                            ColumnFamilyMemTables* memtables,
@@ -189,7 +191,7 @@ class WriteBatchInternal {
                            bool concurrent_memtable_writes = false,
                            bool seq_per_batch = false, size_t batch_cnt = 0,
                            bool batch_per_txn = true,
-                           bool hint_per_batch = false);
+                           bool hint_per_batch = false, FH *fhp = nullptr); //cgmin fhp
 
   static Status Append(WriteBatch* dst, const WriteBatch* src,
                        const bool WAL_only = false);

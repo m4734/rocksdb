@@ -257,7 +257,7 @@ Status DBImplSecondary::RecoverLogFiles(
             &batch, column_family_memtables_.get(),
             nullptr /* flush_scheduler */, nullptr /* trim_history_scheduler*/,
             true, log_number, this, false /* concurrent_memtable_writes */,
-            next_sequence, &has_valid_writes, seq_per_batch_, batch_per_txn_);
+            next_sequence, &has_valid_writes, seq_per_batch_, batch_per_txn_, &fh); //cgmin fhp
       }
       // If column family was not found, it might mean that the WAL write
       // batch references to the column family that was dropped after the

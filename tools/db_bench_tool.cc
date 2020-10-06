@@ -4551,6 +4551,13 @@ class Benchmark {
       }
     }
     thread->stats.AddBytes(bytes);
+
+//cgmin
+    if (FLAGS_perf_level > ROCKSDB_NAMESPACE::PerfLevel::kDisable) {
+      thread->stats.AddMessage(std::string("PERF_CONTEXT:\n") +
+                               get_perf_context()->ToString());
+    }
+
   }
 
   Status DoDeterministicCompact(ThreadState* thread,

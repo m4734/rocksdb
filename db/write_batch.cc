@@ -1284,7 +1284,7 @@ class MemTableInserter : public WriteBatch::Handler {
                    uint64_t recovering_log_number, DB* db,
                    bool concurrent_memtable_writes,
                    bool* has_valid_writes = nullptr, bool seq_per_batch = false,
-                   bool batch_per_txn = true, bool hint_per_batch = false)
+                   bool batch_per_txn = true, bool hint_per_batch = false, FH *fhp = nullptr) //cgmin fhp init
       : sequence_(_sequence),
         cf_mems_(cf_mems),
         flush_scheduler_(flush_scheduler),
@@ -1310,7 +1310,8 @@ class MemTableInserter : public WriteBatch::Handler {
         duplicate_detector_(),
         dup_dectector_on_(false),
         hint_per_batch_(hint_per_batch),
-        hint_created_(false) {
+        hint_created_(false),
+	fhp_(fhp){ //cgmin fhp init
     assert(cf_mems_);
   }
 
@@ -1407,7 +1408,11 @@ class MemTableInserter : public WriteBatch::Handler {
   }
 
   Status PutCFImpl(uint32_t column_family_id, const Slice& key,
-                   const Slice& value, ValueType value_type) {
+                   const Slice& value, ValueType value_type) { //cgmin fh put fhp
+	  if (fhp_ != nullptr)
+		  fhp_->add(key);
+	  else
+		  printf("no fh\n");
     // optimize for non-recovery mode
     if (UNLIKELY(write_after_commit_ && rebuilding_trx_ != nullptr)) {
       WriteBatchInternal::Put(rebuilding_trx_, column_family_id, key, value);
@@ -1976,6 +1981,8 @@ class MemTableInserter : public WriteBatch::Handler {
     return Status::OK();
   }
 
+	FH *fhp_; //cgmin fhp
+
  private:
   MemTablePostProcessInfo* get_post_process_info(MemTable* mem) {
     if (!concurrent_memtable_writes_) {
@@ -1996,12 +2003,12 @@ Status WriteBatchInternal::InsertInto(
     ColumnFamilyMemTables* memtables, FlushScheduler* flush_scheduler,
     TrimHistoryScheduler* trim_history_scheduler,
     bool ignore_missing_column_families, uint64_t recovery_log_number, DB* db,
-    bool concurrent_memtable_writes, bool seq_per_batch, bool batch_per_txn) {
+    bool concurrent_memtable_writes, bool seq_per_batch, bool batch_per_txn, FH *fhp) {
   MemTableInserter inserter(
       sequence, memtables, flush_scheduler, trim_history_scheduler,
       ignore_missing_column_families, recovery_log_number, db,
       concurrent_memtable_writes, nullptr /*has_valid_writes*/, seq_per_batch,
-      batch_per_txn);
+      batch_per_txn,false,fhp); //cgmin fhp
   for (auto w : write_group) {
     if (w->CallbackFailed()) {
       continue;
@@ -2030,7 +2037,7 @@ Status WriteBatchInternal::InsertInto(
     TrimHistoryScheduler* trim_history_scheduler,
     bool ignore_missing_column_families, uint64_t log_number, DB* db,
     bool concurrent_memtable_writes, bool seq_per_batch, size_t batch_cnt,
-    bool batch_per_txn, bool hint_per_batch) {
+    bool batch_per_txn, bool hint_per_batch,FH *fhp) {
 #ifdef NDEBUG
   (void)batch_cnt;
 #endif
@@ -2039,7 +2046,7 @@ Status WriteBatchInternal::InsertInto(
       sequence, memtables, flush_scheduler, trim_history_scheduler,
       ignore_missing_column_families, log_number, db,
       concurrent_memtable_writes, nullptr /*has_valid_writes*/, seq_per_batch,
-      batch_per_txn, hint_per_batch);
+      batch_per_txn, hint_per_batch,fhp); //cgmin fhp
   SetSequence(writer->batch, sequence);
   inserter.set_log_number_ref(writer->log_ref);
   Status s = writer->batch->Iterate(&inserter);
@@ -2057,12 +2064,12 @@ Status WriteBatchInternal::InsertInto(
     TrimHistoryScheduler* trim_history_scheduler,
     bool ignore_missing_column_families, uint64_t log_number, DB* db,
     bool concurrent_memtable_writes, SequenceNumber* next_seq,
-    bool* has_valid_writes, bool seq_per_batch, bool batch_per_txn) {
+    bool* has_valid_writes, bool seq_per_batch, bool batch_per_txn,FH *fhp) {
   MemTableInserter inserter(Sequence(batch), memtables, flush_scheduler,
                             trim_history_scheduler,
                             ignore_missing_column_families, log_number, db,
                             concurrent_memtable_writes, has_valid_writes,
-                            seq_per_batch, batch_per_txn);
+                            seq_per_batch, batch_per_txn,false,fhp); //cgmin fhp
   Status s = batch->Iterate(&inserter);
   if (next_seq != nullptr) {
     *next_seq = inserter.sequence();
