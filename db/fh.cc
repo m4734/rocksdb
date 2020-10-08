@@ -78,6 +78,12 @@ namespace ROCKSDB_NAMESPACE {
 
 	void FH::enqueue(const Slice& key)
 	{
+		if (queue_start + queue_size <=queue_end)
+		{
+			int qe = queue_end;
+			printf("queue full %d %d\n",queue_start,qe);
+			return;
+		}
 		int l;
 		l = queue_end.fetch_add(1) % queue_size;
 		size_array[l]=key.size();
@@ -109,6 +115,7 @@ namespace ROCKSDB_NAMESPACE {
 
 				(*queue_start_s)++;
 			}
+//			printf("%d ",*queue_start_s);
 			}
 			else
 			usleep(sleep_time);

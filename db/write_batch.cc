@@ -1410,7 +1410,8 @@ class MemTableInserter : public WriteBatch::Handler {
   Status PutCFImpl(uint32_t column_family_id, const Slice& key,
                    const Slice& value, ValueType value_type) { //cgmin fh put fhp
 	  if (fhp_ != nullptr)
-		  fhp_->add(key);
+		  fhp_->add(key); //cgmin sync
+//		  fhp_->enqueue(key); // cgmin async
 	  else
 		  printf("no fh\n");
     // optimize for non-recovery mode
