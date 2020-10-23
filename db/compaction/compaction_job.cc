@@ -123,6 +123,18 @@ struct CompactionJob::SubcompactionState {
     std::shared_ptr<const TableProperties> table_properties;
   };
 
+  std::vector<Output> outputs_upper; //cgmin upper level
+  std::unique_ptr<WritableFileWriter> outfile_upper;
+  std::unique_ptr<TableBuilder> builder_upper;
+  Output* current_output_upper() {
+	  if (outputs_upper.empty())
+		  return nullptr;
+	  else
+		  return &outputs_upper.back();
+  }
+  uint64_t current_output_file_size_upper;
+
+
   // State kept for output being generated
   std::vector<Output> outputs;
   std::unique_ptr<WritableFileWriter> outfile;
@@ -160,6 +172,11 @@ struct CompactionJob::SubcompactionState {
       : compaction(c),
         start(_start),
         end(_end),
+	
+	outfile_upper(nullptr), //cgmin upper
+	builder_upper(nullptr),
+	current_output_file_size_upper(0),
+	
         outfile(nullptr),
         builder(nullptr),
         current_output_file_size(0),
@@ -179,10 +196,18 @@ struct CompactionJob::SubcompactionState {
     start = std::move(o.start);
     end = std::move(o.end);
     status = std::move(o.status);
+
+    //cgmin upper
+    outputs_upper = std::move(o.outputs_upper);
+    outfile_upper = std::move(o.outfile_upper);
+    builder_upper = std::move(o.builder_upper);
+    current_output_file_size_upper = std::move(o.current_output_file_size_upper);
+
     outputs = std::move(o.outputs);
     outfile = std::move(o.outfile);
     builder = std::move(o.builder);
     current_output_file_size = std::move(o.current_output_file_size);
+
     total_bytes = std::move(o.total_bytes);
     num_output_records = std::move(o.num_output_records);
     compaction_job_stats = std::move(o.compaction_job_stats);
@@ -395,6 +420,7 @@ void CompactionJob::ReportStartedCompaction(Compaction* compaction) {
 }
 
 void CompactionJob::Prepare() {
+//	printf("Prepare\n");//cgmin print
   AutoThreadOperationStageUpdater stage_updater(
       ThreadStatus::STAGE_COMPACTION_PREPARE);
 
@@ -407,6 +433,8 @@ void CompactionJob::Prepare() {
   write_hint_ =
       c->column_family_data()->CalculateSSTWriteHint(c->output_level());
   bottommost_level_ = c->bottommost_level();
+//printf("sl %d ol %d\n",c->start_level(),c->output_level()); //cgmin print
+  printf("Prepare level %d(%d) %lu/%lu -> %d(%d) %lu/%lu %lu + %lu %p\n",c->start_level(),c->column_family_data()->current()->storage_info()->NumLevelFiles(c->start_level()),c->column_family_data()->current()->storage_info()->NumLevelBytes(c->start_level())/1000000,c->column_family_data()->current()->storage_info()->MaxBytesForLevel(c->start_level())/1000000,c->output_level(),c->column_family_data()->current()->storage_info()->NumLevelFiles(c->output_level()),c->column_family_data()->current()->storage_info()->NumLevelBytes(c->output_level())/1000000,c->column_family_data()->current()->storage_info()->MaxBytesForLevel(c->start_level())/1000000,c->input_levels(0)->num_files,c->input_levels(1)->num_files,c); //cgmin print
 
   if (c->ShouldFormSubcompactions()) {
     {
@@ -419,11 +447,25 @@ void CompactionJob::Prepare() {
       Slice* start = i == 0 ? nullptr : &boundaries_[i - 1];
       Slice* end = i == boundaries_.size() ? nullptr : &boundaries_[i];
       compact_->sub_compact_states.emplace_back(c, start, end, sizes_[i]);
+      //cgmin print
+      /*
+      printf("subcom %lu ",i);
+      if (i == 0)
+	      printf("start ");
+      else
+	      printf("%.*s ",(int)start->size(),start->data());
+      if (i== boundaries_.size())
+	      printf("end");
+      else
+      printf("%.*s",(int)end->size(),end->data());
+      printf("\n");
+      */
     }
     RecordInHistogram(stats_, NUM_SUBCOMPACTIONS_SCHEDULED,
                       compact_->sub_compact_states.size());
   } else {
     compact_->sub_compact_states.emplace_back(c, nullptr, nullptr);
+//    printf("no sub\n"); //cgmin print
   }
 }
 
@@ -442,6 +484,8 @@ void CompactionJob::GenSubcompactionBoundaries() {
   std::vector<Slice> bounds;
   int start_lvl = c->start_level();
   int out_lvl = c->output_level();
+
+//  printf("level %d(%d) -> %d(%d)\n",start_lvl,cfd->current()->storage_info()->NumLevelFiles(start_lvl),out_lvl,cfd->current()->storage_info()->NumLevelFiles(out_lvl)); //cgmin print
 
   // Add the starting and/or ending key of certain input files as a potential
   // boundary
@@ -564,6 +608,7 @@ void CompactionJob::GenSubcompactionBoundaries() {
 }
 
 Status CompactionJob::Run() {
+//	printf("Run\n");//cgmin print
   AutoThreadOperationStageUpdater stage_updater(
       ThreadStatus::STAGE_COMPACTION_RUN);
   TEST_SYNC_POINT("CompactionJob::Run():Start");
@@ -713,6 +758,7 @@ Status CompactionJob::Run() {
 }
 
 Status CompactionJob::Install(const MutableCFOptions& mutable_cf_options) {
+//	printf("Install\n");//cgmin print
   AutoThreadOperationStageUpdater stage_updater(
       ThreadStatus::STAGE_COMPACTION_INSTALL);
   db_mutex_->AssertHeld();
@@ -721,12 +767,16 @@ Status CompactionJob::Install(const MutableCFOptions& mutable_cf_options) {
   cfd->internal_stats()->AddCompactionStats(
       compact_->compaction->output_level(), thread_pri_, compaction_stats_);
 
+
   if (status.ok()) {
     status = InstallCompactionResults(mutable_cf_options);
   }
   if (!versions_->io_status().ok()) {
     io_status_ = versions_->io_status();
   }
+//  printf("Install level %d(%d) %lu/%lu -> %d(%d) %lu/%lu %p\n",c->start_level(),c->column_family_data()->current()->storage_info()->NumLevelFiles(c->start_level()),c->column_family_data()->current()->storage_info()->NumLevelBytes(c->start_level())/1000000,c->column_family_data()->current()->storage_info()->MaxBytesForLevel(c->start_level())/1000000,c->output_level(),c->column_family_data()->current()->storage_info()->NumLevelFiles(c->output_level()),c->column_family_data()->current()->storage_info()->NumLevelBytes(c->output_level())/1000000,c->column_family_data()->current()->storage_info()->MaxBytesForLevel(c->start_level())/1000000,c); //cgmin print
+  printf("Install level %d(%d) %lu/%lu -> %d(%d) %lu/%lu %lu + %lu %p\n",compact_->compaction->start_level(),cfd->current()->storage_info()->NumLevelFiles(compact_->compaction->start_level()),cfd->current()->storage_info()->NumLevelBytes(compact_->compaction->start_level())/1000000,cfd->current()->storage_info()->MaxBytesForLevel(compact_->compaction->start_level())/1000000,compact_->compaction->output_level(),cfd->current()->storage_info()->NumLevelFiles(compact_->compaction->output_level()),cfd->current()->storage_info()->NumLevelBytes(compact_->compaction->output_level())/1000000,cfd->current()->storage_info()->MaxBytesForLevel(compact_->compaction->output_level())/1000000,compact_->compaction->input_levels(0)->num_files,compact_->compaction->input_levels(1)->num_files,compact_->compaction); //cgmin print
+
   VersionStorageInfo::LevelSummaryStorage tmp;
   auto vstorage = cfd->current()->storage_info();
   const auto& stats = compaction_stats_;
@@ -910,6 +960,7 @@ void CompactionJob::ProcessKeyValueCompaction(SubcompactionState* sub_compact) {
                                   sub_compact->current_output_file_size);
   }
   const auto& c_iter_stats = c_iter->iter_stats();
+  bool key_upper; //cgmin
 
   while (status.ok() && !cfd->IsDropped() && c_iter->Valid()) {
     // Invariant: c_iter.status() is guaranteed to be OK if c_iter->Valid()
@@ -930,13 +981,94 @@ void CompactionJob::ProcessKeyValueCompaction(SubcompactionState* sub_compact) {
       RecordCompactionIOStats();
     }
 
+    key_upper = false; //cgmin temp
+
+    //cgmin upper
+
+	if (key_upper)
+	{
+	int sc_output_level = sub_compact->compaction->output_level();
+		if (sc_output_level > 0)
+			--sc_output_level;
     // Open output file if necessary
-    if (sub_compact->builder == nullptr) {
-      status = OpenCompactionOutputFile(sub_compact);
+    if (sub_compact->builder_upper == nullptr) {
+      status = OpenCompactionOutputFile_upper(sub_compact); //cgmin upper
       if (!status.ok()) {
         break;
       }
     }
+
+    assert(sub_compact->builder_upper != nullptr);
+    assert(sub_compact->current_output_upper() != nullptr);
+    sub_compact->builder_upper->Add(key, value);
+    sub_compact->current_output_file_size_upper =
+        sub_compact->builder_upper->EstimatedFileSize();
+    const ParsedInternalKey& ikey = c_iter->ikey();
+    sub_compact->current_output_upper()->meta.UpdateBoundaries(
+        key, value, ikey.sequence, ikey.type);
+    sub_compact->num_output_records++;
+
+    // Close output file if it is big enough. Two possibilities determine it's
+    // time to close it: (1) the current key should be this file's last key, (2)
+    // the next key should not be in this file.
+    //
+    // TODO(aekmekji): determine if file should be closed earlier than this
+    // during subcompactions (i.e. if output size, estimated by input size, is
+    // going to be 1.2MB and max_output_file_size = 1MB, prefer to have 0.6MB
+    // and 0.6MB instead of 1MB and 0.2MB)
+    bool output_file_ended = false;
+    Status input_status;
+    if (/*sub_compact->compaction->output_level()*/ sc_output_level != 0 &&
+        sub_compact->current_output_file_size_upper >=
+            sub_compact->compaction->max_output_file_size()) {
+      // (1) this key terminates the file. For historical reasons, the iterator
+      // status before advancing will be given to FinishCompactionOutputFile().
+      input_status = input->status();
+      output_file_ended = true;
+    }
+    TEST_SYNC_POINT_CALLBACK(
+        "CompactionJob::Run():PausingManualCompaction:2",
+        reinterpret_cast<void*>(
+            const_cast<std::atomic<bool>*>(manual_compaction_paused_)));
+    c_iter->Next();
+    if (c_iter->status().IsManualCompactionPaused()) {
+      break;
+    }
+    if (!output_file_ended && c_iter->Valid() &&
+        /*sub_compact->compaction->output_level()*/ sc_output_level != 0 &&
+        sub_compact->ShouldStopBefore(c_iter->key(),
+                                      sub_compact->current_output_file_size_upper) &&
+        sub_compact->builder_upper != nullptr) {
+      // (2) this key belongs to the next file. For historical reasons, the
+      // iterator status after advancing will be given to
+      // FinishCompactionOutputFile().
+      input_status = input->status();
+      output_file_ended = true;
+    }
+    if (output_file_ended) {
+      const Slice* next_key = nullptr;
+      if (c_iter->Valid()) {
+        next_key = &c_iter->key();
+      }
+      CompactionIterationStats range_del_out_stats;
+      status =
+          FinishCompactionOutputFile_upper(input_status, sub_compact, &range_del_agg,
+                                     &range_del_out_stats, next_key); //cgmin upper
+      RecordDroppedKeys(range_del_out_stats,
+                        &sub_compact->compaction_job_stats);
+    }
+
+	}
+	else
+	{
+    // Open output file if necessary
+    if (sub_compact->builder == nullptr) {
+      status = OpenCompactionOutputFile(sub_compact); 
+      if (!status.ok()) {
+        break;
+      }
+    }
+
     assert(sub_compact->builder != nullptr);
     assert(sub_compact->current_output() != nullptr);
     sub_compact->builder->Add(key, value);
@@ -996,6 +1128,7 @@ void CompactionJob::ProcessKeyValueCompaction(SubcompactionState* sub_compact) {
       RecordDroppedKeys(range_del_out_stats,
                         &sub_compact->compaction_job_stats);
     }
+	}
   }
 
   sub_compact->compaction_job_stats.num_input_deletion_records =
@@ -1053,6 +1186,17 @@ void CompactionJob::ProcessKeyValueCompaction(SubcompactionState* sub_compact) {
     }
     RecordDroppedKeys(range_del_out_stats, &sub_compact->compaction_job_stats);
   }
+
+  if (sub_compact->builder_upper != nullptr) { //cgmin upper
+    CompactionIterationStats range_del_out_stats;
+    Status s = FinishCompactionOutputFile_upper(status, sub_compact, &range_del_agg,
+                                          &range_del_out_stats);
+    if (status.ok()) {
+      status = s;
+    }
+    RecordDroppedKeys(range_del_out_stats, &sub_compact->compaction_job_stats);
+  }
+
 
   sub_compact->compaction_job_stats.cpu_micros =
       env_->NowCPUNanos() / 1000 - prev_cpu_micros;
@@ -1124,6 +1268,7 @@ Status CompactionJob::FinishCompactionOutputFile(
     const Slice* next_table_min_key /* = nullptr */) {
   AutoThreadOperationStageUpdater stage_updater(
       ThreadStatus::STAGE_COMPACTION_SYNC_FILE);
+
   assert(sub_compact != nullptr);
   assert(sub_compact->outfile);
   assert(sub_compact->builder != nullptr);
@@ -1412,6 +1557,302 @@ Status CompactionJob::FinishCompactionOutputFile(
   return s;
 }
 
+Status CompactionJob::FinishCompactionOutputFile_upper(
+    const Status& input_status, SubcompactionState* sub_compact,
+    CompactionRangeDelAggregator* range_del_agg,
+    CompactionIterationStats* range_del_out_stats,
+    const Slice* next_table_min_key /* = nullptr */) { //cgmin upper
+  AutoThreadOperationStageUpdater stage_updater(
+      ThreadStatus::STAGE_COMPACTION_SYNC_FILE);
+
+  assert(sub_compact != nullptr);
+  assert(sub_compact->outfile_upper);
+  assert(sub_compact->builder_upper != nullptr);
+  assert(sub_compact->current_output_upper() != nullptr);
+
+  uint64_t output_number = sub_compact->current_output_upper()->meta.fd.GetNumber();
+  assert(output_number != 0);
+
+  ColumnFamilyData* cfd = sub_compact->compaction->column_family_data();
+  const Comparator* ucmp = cfd->user_comparator();
+
+  // Check for iterator errors
+  Status s = input_status;
+  auto meta = &sub_compact->current_output_upper()->meta;
+  assert(meta != nullptr);
+  if (s.ok()) {
+    Slice lower_bound_guard, upper_bound_guard;
+    std::string smallest_user_key;
+    const Slice *lower_bound, *upper_bound;
+    bool lower_bound_from_sub_compact = false;
+    if (sub_compact->outputs.size() == 1) {
+      // For the first output table, include range tombstones before the min key
+      // but after the subcompaction boundary.
+      lower_bound = sub_compact->start;
+      lower_bound_from_sub_compact = true;
+    } else if (meta->smallest.size() > 0) {
+      // For subsequent output tables, only include range tombstones from min
+      // key onwards since the previous file was extended to contain range
+      // tombstones falling before min key.
+      smallest_user_key = meta->smallest.user_key().ToString(false /*hex*/);
+      lower_bound_guard = Slice(smallest_user_key);
+      lower_bound = &lower_bound_guard;
+    } else {
+      lower_bound = nullptr;
+    }
+    if (next_table_min_key != nullptr) {
+      // This may be the last file in the subcompaction in some cases, so we
+      // need to compare the end key of subcompaction with the next file start
+      // key. When the end key is chosen by the subcompaction, we know that
+      // it must be the biggest key in output file. Therefore, it is safe to
+      // use the smaller key as the upper bound of the output file, to ensure
+      // that there is no overlapping between different output files.
+      upper_bound_guard = ExtractUserKey(*next_table_min_key);
+      if (sub_compact->end != nullptr &&
+          ucmp->Compare(upper_bound_guard, *sub_compact->end) >= 0) {
+        upper_bound = sub_compact->end;
+      } else {
+        upper_bound = &upper_bound_guard;
+      }
+    } else {
+      // This is the last file in the subcompaction, so extend until the
+      // subcompaction ends.
+      upper_bound = sub_compact->end;
+    }
+    auto earliest_snapshot = kMaxSequenceNumber;
+    if (existing_snapshots_.size() > 0) {
+      earliest_snapshot = existing_snapshots_[0];
+    }
+    bool has_overlapping_endpoints;
+    if (upper_bound != nullptr && meta->largest.size() > 0) {
+      has_overlapping_endpoints =
+          ucmp->Compare(meta->largest.user_key(), *upper_bound) == 0;
+    } else {
+      has_overlapping_endpoints = false;
+    }
+
+    // The end key of the subcompaction must be bigger or equal to the upper
+    // bound. If the end of subcompaction is null or the upper bound is null,
+    // it means that this file is the last file in the compaction. So there
+    // will be no overlapping between this file and others.
+    assert(sub_compact->end == nullptr ||
+           upper_bound == nullptr ||
+           ucmp->Compare(*upper_bound , *sub_compact->end) <= 0);
+    auto it = range_del_agg->NewIterator(lower_bound, upper_bound,
+                                         has_overlapping_endpoints);
+    // Position the range tombstone output iterator. There may be tombstone
+    // fragments that are entirely out of range, so make sure that we do not
+    // include those.
+    if (lower_bound != nullptr) {
+      it->Seek(*lower_bound);
+    } else {
+      it->SeekToFirst();
+    }
+    for (; it->Valid(); it->Next()) {
+      auto tombstone = it->Tombstone();
+      if (upper_bound != nullptr) {
+        int cmp = ucmp->Compare(*upper_bound, tombstone.start_key_);
+        if ((has_overlapping_endpoints && cmp < 0) ||
+            (!has_overlapping_endpoints && cmp <= 0)) {
+          // Tombstones starting after upper_bound only need to be included in
+          // the next table. If the current SST ends before upper_bound, i.e.,
+          // `has_overlapping_endpoints == false`, we can also skip over range
+          // tombstones that start exactly at upper_bound. Such range tombstones
+          // will be included in the next file and are not relevant to the point
+          // keys or endpoints of the current file.
+          break;
+        }
+      }
+
+      if (bottommost_level_ && tombstone.seq_ <= earliest_snapshot) {
+        // TODO(andrewkr): tombstones that span multiple output files are
+        // counted for each compaction output file, so lots of double counting.
+        range_del_out_stats->num_range_del_drop_obsolete++;
+        range_del_out_stats->num_record_drop_obsolete++;
+        continue;
+      }
+
+      auto kv = tombstone.Serialize();
+      assert(lower_bound == nullptr ||
+             ucmp->Compare(*lower_bound, kv.second) < 0);
+      sub_compact->builder->Add(kv.first.Encode(), kv.second);
+      InternalKey smallest_candidate = std::move(kv.first);
+      if (lower_bound != nullptr &&
+          ucmp->Compare(smallest_candidate.user_key(), *lower_bound) <= 0) {
+        // Pretend the smallest key has the same user key as lower_bound
+        // (the max key in the previous table or subcompaction) in order for
+        // files to appear key-space partitioned.
+        //
+        // When lower_bound is chosen by a subcompaction, we know that
+        // subcompactions over smaller keys cannot contain any keys at
+        // lower_bound. We also know that smaller subcompactions exist, because
+        // otherwise the subcompaction woud be unbounded on the left. As a
+        // result, we know that no other files on the output level will contain
+        // actual keys at lower_bound (an output file may have a largest key of
+        // lower_bound@kMaxSequenceNumber, but this only indicates a large range
+        // tombstone was truncated). Therefore, it is safe to use the
+        // tombstone's sequence number, to ensure that keys at lower_bound at
+        // lower levels are covered by truncated tombstones.
+        //
+        // If lower_bound was chosen by the smallest data key in the file,
+        // choose lowest seqnum so this file's smallest internal key comes after
+        // the previous file's largest. The fake seqnum is OK because the read
+        // path's file-picking code only considers user key.
+        smallest_candidate = InternalKey(
+            *lower_bound, lower_bound_from_sub_compact ? tombstone.seq_ : 0,
+            kTypeRangeDeletion);
+      }
+      InternalKey largest_candidate = tombstone.SerializeEndKey();
+      if (upper_bound != nullptr &&
+          ucmp->Compare(*upper_bound, largest_candidate.user_key()) <= 0) {
+        // Pretend the largest key has the same user key as upper_bound (the
+        // min key in the following table or subcompaction) in order for files
+        // to appear key-space partitioned.
+        //
+        // Choose highest seqnum so this file's largest internal key comes
+        // before the next file's/subcompaction's smallest. The fake seqnum is
+        // OK because the read path's file-picking code only considers the user
+        // key portion.
+        //
+        // Note Seek() also creates InternalKey with (user_key,
+        // kMaxSequenceNumber), but with kTypeDeletion (0x7) instead of
+        // kTypeRangeDeletion (0xF), so the range tombstone comes before the
+        // Seek() key in InternalKey's ordering. So Seek() will look in the
+        // next file for the user key.
+        largest_candidate =
+            InternalKey(*upper_bound, kMaxSequenceNumber, kTypeRangeDeletion);
+      }
+#ifndef NDEBUG
+      SequenceNumber smallest_ikey_seqnum = kMaxSequenceNumber;
+      if (meta->smallest.size() > 0) {
+        smallest_ikey_seqnum = GetInternalKeySeqno(meta->smallest.Encode());
+      }
+#endif
+      meta->UpdateBoundariesForRange(smallest_candidate, largest_candidate,
+                                     tombstone.seq_,
+                                     cfd->internal_comparator());
+
+      // The smallest key in a file is used for range tombstone truncation, so
+      // it cannot have a seqnum of 0 (unless the smallest data key in a file
+      // has a seqnum of 0). Otherwise, the truncated tombstone may expose
+      // deleted keys at lower levels.
+      assert(smallest_ikey_seqnum == 0 ||
+             ExtractInternalKeyFooter(meta->smallest.Encode()) !=
+                 PackSequenceAndType(0, kTypeRangeDeletion));
+    }
+    meta->marked_for_compaction = sub_compact->builder->NeedCompact();
+  }
+  const uint64_t current_entries = sub_compact->builder->NumEntries();
+  if (s.ok()) {
+    s = sub_compact->builder_upper->Finish();
+  } else {
+    sub_compact->builder_upper->Abandon();
+  }
+  if (!sub_compact->builder_upper->io_status().ok()) {
+    io_status_ = sub_compact->builder_upper->io_status();
+    s = io_status_;
+  }
+  const uint64_t current_bytes = sub_compact->builder_upper->FileSize();
+  if (s.ok()) {
+    meta->fd.file_size = current_bytes;
+  }
+  sub_compact->current_output_upper()->finished = true;
+  sub_compact->total_bytes += current_bytes;
+
+  // Finish and check for file errors
+  IOStatus io_s;
+  if (s.ok()) {
+    StopWatch sw(env_, stats_, COMPACTION_OUTFILE_SYNC_MICROS);
+    io_s = sub_compact->outfile_upper->Sync(db_options_.use_fsync);
+  }
+  if (io_s.ok()) {
+    io_s = sub_compact->outfile_upper->Close();
+  }
+  if (io_s.ok()) {
+    // Add the checksum information to file metadata.
+    meta->file_checksum = sub_compact->outfile_upper->GetFileChecksum();
+    meta->file_checksum_func_name =
+        sub_compact->outfile_upper->GetFileChecksumFuncName();
+  }
+  if (!io_s.ok()) {
+    io_status_ = io_s;
+    s = io_s;
+  }
+  sub_compact->outfile_upper.reset();
+
+  TableProperties tp;
+  if (s.ok()) {
+    tp = sub_compact->builder_upper->GetTableProperties();
+  }
+
+  if (s.ok() && current_entries == 0 && tp.num_range_deletions == 0) {
+    // If there is nothing to output, no necessary to generate a sst file.
+    // This happens when the output level is bottom level, at the same time
+    // the sub_compact output nothing.
+    std::string fname =
+        TableFileName(sub_compact->compaction->immutable_cf_options()->cf_paths,
+                      meta->fd.GetNumber(), meta->fd.GetPathId());
+    env_->DeleteFile(fname);
+
+    // Also need to remove the file from outputs, or it will be added to the
+    // VersionEdit.
+    assert(!sub_compact->outputs_upper.empty());
+    sub_compact->outputs.pop_back();
+    meta = nullptr;
+  }
+
+  if (s.ok() && (current_entries > 0 || tp.num_range_deletions > 0)) {
+    // Output to event logger and fire events.
+    sub_compact->current_output_upper()->table_properties =
+        std::make_shared<TableProperties>(tp);
+    ROCKS_LOG_INFO(db_options_.info_log,
+                   "[%s] [JOB %d] Generated table #%" PRIu64 ": %" PRIu64
+                   " keys, %" PRIu64 " bytes%s",
+                   cfd->GetName().c_str(), job_id_, output_number,
+                   current_entries, current_bytes,
+                   meta->marked_for_compaction ? " (need compaction)" : "");
+  }
+  std::string fname;
+  FileDescriptor output_fd;
+  uint64_t oldest_blob_file_number = kInvalidBlobFileNumber;
+  if (meta != nullptr) {
+    fname =
+        TableFileName(sub_compact->compaction->immutable_cf_options()->cf_paths,
+                      meta->fd.GetNumber(), meta->fd.GetPathId());
+    output_fd = meta->fd;
+    oldest_blob_file_number = meta->oldest_blob_file_number;
+  } else {
+    fname = "(nil)";
+  }
+  EventHelpers::LogAndNotifyTableFileCreationFinished(
+      event_logger_, cfd->ioptions()->listeners, dbname_, cfd->GetName(), fname,
+      job_id_, output_fd, oldest_blob_file_number, tp,
+      TableFileCreationReason::kCompaction, s);
+
+#ifndef ROCKSDB_LITE
+  // Report new file to SstFileManagerImpl
+  auto sfm =
+      static_cast<SstFileManagerImpl*>(db_options_.sst_file_manager.get());
+  if (sfm && meta != nullptr && meta->fd.GetPathId() == 0) {
+    sfm->OnAddFile(fname);
+    if (sfm->IsMaxAllowedSpaceReached()) {
+      // TODO(ajkr): should we return OK() if max space was reached by the final
+      // compaction output file (similarly to how flush works when full)?
+      s = Status::SpaceLimit("Max allowed space was reached");
+      TEST_SYNC_POINT(
+          "CompactionJob::FinishCompactionOutputFile:"
+          "MaxAllowedSpaceReached");
+      InstrumentedMutexLock l(db_mutex_);
+      db_error_handler_->SetBGError(s, BackgroundErrorReason::kCompaction);
+    }
+  }
+#endif
+
+  sub_compact->builder_upper.reset();
+  sub_compact->current_output_file_size_upper = 0;
+  return s;
+}
+
 Status CompactionJob::InstallCompactionResults(
     const MutableCFOptions& mutable_cf_options) {
   db_mutex_->AssertHeld();
@@ -1446,6 +1887,18 @@ Status CompactionJob::InstallCompactionResults(
       compaction->edit()->AddFile(compaction->output_level(), out.meta);
     }
   }
+/*
+//cgmin addfile upper here
+  for (const auto& sub_compact : compact_->sub_compact_states) {
+    for (const auto& out : sub_compact.outputs_upper) {
+	    if (compaction->output_level() == 0)
+		      compaction->edit()->AddFile(compaction->output_level(), out.meta); // level0 ???
+	    else
+      compaction->edit()->AddFile(compaction->output_level()-1, out.meta); // level0 ???
+    }
+  }
+*/
+
   return versions_->LogAndApply(compaction->column_family_data(),
                                 mutable_cf_options, compaction->edit(),
                                 db_mutex_, db_directory_);
@@ -1463,7 +1916,8 @@ void CompactionJob::RecordCompactionIOStats() {
 }
 
 Status CompactionJob::OpenCompactionOutputFile(
-    SubcompactionState* sub_compact) {
+    SubcompactionState* sub_compact){
+
   assert(sub_compact != nullptr);
   assert(sub_compact->builder == nullptr);
   // no need to lock because VersionSet::next_file_number_ is atomic
@@ -1525,7 +1979,7 @@ Status CompactionJob::OpenCompactionOutputFile(
     out.meta.oldest_ancester_time = oldest_ancester_time;
     out.meta.file_creation_time = current_time;
     out.finished = false;
-    sub_compact->outputs.push_back(out);
+	    sub_compact->outputs.push_back(out);
   }
 
   writable_file->SetIOPriority(Env::IOPriority::IO_LOW);
@@ -1553,6 +2007,108 @@ Status CompactionJob::OpenCompactionOutputFile(
       0 /*sample_for_compression */,
       sub_compact->compaction->output_compression_opts(),
       sub_compact->compaction->output_level(), skip_filters,
+      oldest_ancester_time, 0 /* oldest_key_time */,
+      sub_compact->compaction->max_output_file_size(), current_time));
+  LogFlush(db_options_.info_log);
+  return s;
+}
+
+Status CompactionJob::OpenCompactionOutputFile_upper(
+    SubcompactionState* sub_compact) { //cgmin upper level
+
+	int sc_output_level = sub_compact->compaction->output_level();
+			    if (sc_output_level > 0)
+				    --sc_output_level;
+
+  assert(sub_compact != nullptr);
+  assert(sub_compact->builder_upper == nullptr);
+  // no need to lock because VersionSet::next_file_number_ is atomic
+  uint64_t file_number = versions_->NewFileNumber();
+  std::string fname =
+      TableFileName(sub_compact->compaction->immutable_cf_options()->cf_paths,
+                    file_number, sub_compact->compaction->output_path_id());
+  // Fire events.
+  ColumnFamilyData* cfd = sub_compact->compaction->column_family_data();
+#ifndef ROCKSDB_LITE
+  EventHelpers::NotifyTableFileCreationStarted(
+      cfd->ioptions()->listeners, dbname_, cfd->GetName(), fname, job_id_,
+      TableFileCreationReason::kCompaction);
+#endif  // !ROCKSDB_LITE
+  // Make the output file
+  std::unique_ptr<FSWritableFile> writable_file;
+#ifndef NDEBUG
+  bool syncpoint_arg = file_options_.use_direct_writes;
+  TEST_SYNC_POINT_CALLBACK("CompactionJob::OpenCompactionOutputFile",
+                           &syncpoint_arg);
+#endif
+  Status s = NewWritableFile(fs_, fname, &writable_file, file_options_);
+  if (!s.ok()) {
+    ROCKS_LOG_ERROR(
+        db_options_.info_log,
+        "[%s] [JOB %d] OpenCompactionOutputFiles for table #%" PRIu64
+        " fails at NewWritableFile with status %s",
+        sub_compact->compaction->column_family_data()->GetName().c_str(),
+        job_id_, file_number, s.ToString().c_str());
+    LogFlush(db_options_.info_log);
+    EventHelpers::LogAndNotifyTableFileCreationFinished(
+        event_logger_, cfd->ioptions()->listeners, dbname_, cfd->GetName(),
+        fname, job_id_, FileDescriptor(), kInvalidBlobFileNumber,
+        TableProperties(), TableFileCreationReason::kCompaction, s);
+    return s;
+  }
+
+  // Try to figure out the output file's oldest ancester time.
+  int64_t temp_current_time = 0;
+  auto get_time_status = env_->GetCurrentTime(&temp_current_time);
+  // Safe to proceed even if GetCurrentTime fails. So, log and proceed.
+  if (!get_time_status.ok()) {
+    ROCKS_LOG_WARN(db_options_.info_log,
+                   "Failed to get current time. Status: %s",
+                   get_time_status.ToString().c_str());
+  }
+  uint64_t current_time = static_cast<uint64_t>(temp_current_time);
+  uint64_t oldest_ancester_time =
+      sub_compact->compaction->MinInputFileOldestAncesterTime();
+  if (oldest_ancester_time == port::kMaxUint64) {
+    oldest_ancester_time = current_time;
+  }
+
+  // Initialize a SubcompactionState::Output and add it to sub_compact->outputs
+  {
+    SubcompactionState::Output out;
+    out.meta.fd = FileDescriptor(file_number,
+                                 sub_compact->compaction->output_path_id(), 0);
+    out.meta.oldest_ancester_time = oldest_ancester_time;
+    out.meta.file_creation_time = current_time;
+    out.finished = false;
+	    sub_compact->outputs_upper.push_back(out); //cgmin upper
+  }
+
+  writable_file->SetIOPriority(Env::IOPriority::IO_LOW);
+  writable_file->SetWriteLifeTimeHint(write_hint_);
+  writable_file->SetPreallocationBlockSize(static_cast<size_t>(
+      sub_compact->compaction->OutputFilePreallocationSize()));
+  const auto& listeners =
+      sub_compact->compaction->immutable_cf_options()->listeners;
+  sub_compact->outfile_upper.reset( //cgmin upper
+      new WritableFileWriter(std::move(writable_file), fname, file_options_,
+                             env_, db_options_.statistics.get(), listeners,
+                             db_options_.file_checksum_gen_factory.get()));
+
+  // If the Column family flag is to only optimize filters for hits,
+  // we can skip creating filters if this is the bottommost_level where
+  // data is going to be found
+  bool skip_filters =
+      cfd->ioptions()->optimize_filters_for_hits && bottommost_level_;
+
+  sub_compact->builder_upper.reset(NewTableBuilder( //cgmin upper
+      *cfd->ioptions(), *(sub_compact->compaction->mutable_cf_options()),
+      cfd->internal_comparator(), cfd->int_tbl_prop_collector_factories(),
+      cfd->GetID(), cfd->GetName(), sub_compact->outfile_upper.get() , //cgmin upper
+      sub_compact->compaction->output_compression(),
+      0 /*sample_for_compression */,
+      sub_compact->compaction->output_compression_opts(),
+      /*sub_compact->compaction->output_level()*/sc_output_level, skip_filters, //cgmin upper
       oldest_ancester_time, 0 /* oldest_key_time */,
       sub_compact->compaction->max_output_file_size(), current_time));
   LogFlush(db_options_.info_log);

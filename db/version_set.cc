@@ -2407,6 +2407,7 @@ uint32_t GetExpiredTtlFilesCount(const ImmutableCFOptions& ioptions,
 void VersionStorageInfo::ComputeCompactionScore(
     const ImmutableCFOptions& immutable_cf_options,
     const MutableCFOptions& mutable_cf_options) {
+	uint64_t l0s=0; //cgmin score
   for (int level = 0; level <= MaxInputLevel(); level++) {
     double score;
     if (level == 0) {
@@ -2429,6 +2430,7 @@ void VersionStorageInfo::ComputeCompactionScore(
           num_sorted_runs++;
         }
       }
+      l0s = total_size; //cgmin score
       if (compaction_style_ == kCompactionStyleUniversal) {
         // For universal compaction, we use level0 score to indicate
         // compaction score for the whole DB. Adding other levels as if
@@ -2483,6 +2485,13 @@ void VersionStorageInfo::ComputeCompactionScore(
       }
       score = static_cast<double>(level_bytes_no_compacting) /
               MaxBytesForLevel(level);
+
+      if (false && level == 1 /*&& level_bytes_no_compacting > 0*/ && level_bytes_no_compacting > l0s) //cgmin score
+      {
+	      score+=100;
+	      l0s++;
+      }
+	      
     }
     compaction_level_[level] = level;
     compaction_score_[level] = score;

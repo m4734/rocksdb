@@ -127,9 +127,17 @@ class CompactionJob {
       CompactionRangeDelAggregator* range_del_agg,
       CompactionIterationStats* range_del_out_stats,
       const Slice* next_table_min_key = nullptr);
+      
+  Status FinishCompactionOutputFile_upper(
+      const Status& input_status, SubcompactionState* sub_compact,
+      CompactionRangeDelAggregator* range_del_agg,
+      CompactionIterationStats* range_del_out_stats,
+      const Slice* next_table_min_key = nullptr); //cgmin upper
+
   Status InstallCompactionResults(const MutableCFOptions& mutable_cf_options);
   void RecordCompactionIOStats();
   Status OpenCompactionOutputFile(SubcompactionState* sub_compact);
+  Status OpenCompactionOutputFile_upper(SubcompactionState* sub_compact); //cgmin upper level
   void CleanupCompaction();
   void UpdateCompactionJobStats(
     const InternalStats::CompactionStats& stats) const;
