@@ -24,7 +24,10 @@ class FH
 
 		void add(const Slice& key);
 //		void add2(const char* data, size_t size);
+		uint32_t get(const Slice& key);
 		uint32_t hash(int fn, const Slice& key);
+
+		std::atomic<int> add_count;
 
 		// async queue
 		int queue_size;

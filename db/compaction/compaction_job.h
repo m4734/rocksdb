@@ -78,7 +78,8 @@ class CompactionJob {
                 const std::string& dbname,
                 CompactionJobStats* compaction_job_stats,
                 Env::Priority thread_pri,
-                const std::atomic<bool>* manual_compaction_paused = nullptr);
+                const std::atomic<bool>* manual_compaction_paused = nullptr,
+		FH* fhp = nullptr); //cgmin fhp
 
   ~CompactionJob();
 
@@ -150,6 +151,7 @@ class CompactionJob {
 
   void LogCompaction();
 
+
   int job_id_;
 
   // CompactionJob state
@@ -205,6 +207,8 @@ class CompactionJob {
   Env::WriteLifeTimeHint write_hint_;
   Env::Priority thread_pri_;
   IOStatus io_status_;
+
+	FH* fhp_; //cgmin fhp
 };
 
 }  // namespace ROCKSDB_NAMESPACE

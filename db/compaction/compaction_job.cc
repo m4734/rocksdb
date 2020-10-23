@@ -330,7 +330,7 @@ CompactionJob::CompactionJob(
     const SnapshotChecker* snapshot_checker, std::shared_ptr<Cache> table_cache,
     EventLogger* event_logger, bool paranoid_file_checks, bool measure_io_stats,
     const std::string& dbname, CompactionJobStats* compaction_job_stats,
-    Env::Priority thread_pri, const std::atomic<bool>* manual_compaction_paused)
+    Env::Priority thread_pri, const std::atomic<bool>* manual_compaction_paused,FH* fhp) //cgmin fhp
     : job_id_(job_id),
       compact_(new CompactionState(compaction)),
       compaction_job_stats_(compaction_job_stats),
@@ -361,7 +361,7 @@ CompactionJob::CompactionJob(
       paranoid_file_checks_(paranoid_file_checks),
       measure_io_stats_(measure_io_stats),
       write_hint_(Env::WLTH_NOT_SET),
-      thread_pri_(thread_pri) {
+      thread_pri_(thread_pri), fhp_(fhp) { //cgmin fhp
   assert(log_buffer_ != nullptr);
   const auto* cfd = compact_->compaction->column_family_data();
   ThreadStatusUtil::SetColumnFamily(cfd, cfd->ioptions()->env,
@@ -984,6 +984,8 @@ void CompactionJob::ProcessKeyValueCompaction(SubcompactionState* sub_compact) {
     key_upper = false; //cgmin temp
 
     //cgmin upper
+
+	printf("%.*s %d\n",(int)key.size(),key.data(),fhp_->get(key));
 
 	if (key_upper)
 	{
@@ -1740,9 +1742,9 @@ Status CompactionJob::FinishCompactionOutputFile_upper(
              ExtractInternalKeyFooter(meta->smallest.Encode()) !=
                  PackSequenceAndType(0, kTypeRangeDeletion));
     }
-    meta->marked_for_compaction = sub_compact->builder->NeedCompact();
+    meta->marked_for_compaction = sub_compact->builder_upper->NeedCompact();
   }
-  const uint64_t current_entries = sub_compact->builder->NumEntries();
+  const uint64_t current_entries = sub_compact->builder_upper->NumEntries();
   if (s.ok()) {
     s = sub_compact->builder_upper->Finish();
   } else {
@@ -1887,7 +1889,7 @@ Status CompactionJob::InstallCompactionResults(
       compaction->edit()->AddFile(compaction->output_level(), out.meta);
     }
   }
-/*
+
 //cgmin addfile upper here
   for (const auto& sub_compact : compact_->sub_compact_states) {
     for (const auto& out : sub_compact.outputs_upper) {
@@ -1897,7 +1899,7 @@ Status CompactionJob::InstallCompactionResults(
       compaction->edit()->AddFile(compaction->output_level()-1, out.meta); // level0 ???
     }
   }
-*/
+
 
   return versions_->LogAndApply(compaction->column_family_data(),
                                 mutable_cf_options, compaction->edit(),

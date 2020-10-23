@@ -10,7 +10,7 @@ namespace ROCKSDB_NAMESPACE {
 	FH::FH()
 	{
 		bs = 200000;
-		fs = 10; //10;
+		fs = 1; //10;
 		fv = new uint32_t*[fs];
 		int i,j;
 		for (i=0;i<fs;i++)
@@ -67,6 +67,21 @@ namespace ROCKSDB_NAMESPACE {
 //				min = fv[i][hv];
 		}
 //		printf("%d\n",min);
+
+		++add_count;
+	}
+
+	uint32_t FH::get(const Slice& key)
+	{
+		int i;
+		uint32_t hv, min=999999999;
+		for (i=0;i<fs;i++)
+		{
+			hv = hash(i,key);
+			if (min > fv[i][hv])
+				min = fv[i][hv];
+		}
+		return min;
 	}
 
 	uint32_t FH::hash(int fn,const Slice& key)
