@@ -78,7 +78,7 @@ class Compaction {
              std::vector<FileMetaData*> grandparents,
              bool manual_compaction = false, double score = -1,
              bool deletion_compaction = false,
-             CompactionReason compaction_reason = CompactionReason::kUnknown);
+             CompactionReason compaction_reason = CompactionReason::kUnknown, Slice smallest_key_upper = NULL, Slice largest_key_upper = NULL); //cgmin upper range
 
   // No copying allowed
   Compaction(const Compaction&) = delete;
@@ -376,6 +376,11 @@ class Compaction {
 
   // Reason for compaction
   CompactionReason compaction_reason_;
+
+  //cgmin upper range
+ public:
+  Slice smallest_key_upper_;
+  Slice largest_key_upper_;
 };
 
 // Return sum of sizes of all files in `files`.

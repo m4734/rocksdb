@@ -126,6 +126,8 @@ class LevelCompactionBuilder {
                             int level);
 
   static const int kMinFilesForIntraL0Compaction = 4;
+
+  Slice smallest_key_upper, largest_key_upper; //cgmin range upper
 };
 
 void LevelCompactionBuilder::PickFileToCompact(
@@ -334,7 +336,7 @@ Compaction* LevelCompactionBuilder::GetCompaction() {
                          output_level_, vstorage_->base_level()),
       GetCompressionOptions(mutable_cf_options_, vstorage_, output_level_),
       /* max_subcompactions */ 0, std::move(grandparents_), is_manual_,
-      start_level_score_, false /* deletion_compaction */, compaction_reason_);
+      start_level_score_, false /* deletion_compaction */, compaction_reason_,smallest_key_upper,largest_key_upper); //cgmin upper range
 
   // If it's level 0 compaction, make sure we don't execute any other level 0
   // compactions in parallel
@@ -456,6 +458,11 @@ bool LevelCompactionBuilder::PickFileToCompact() {
     // overlap.
     InternalKey smallest, largest;
     compaction_picker_->GetRange(start_level_inputs_, &smallest, &largest);
+    
+    //cgmin key range here?
+	smallest_key_upper = smallest.user_key();
+	largest_key_upper = largest.user_key();
+
     CompactionInputFiles output_level_inputs;
     output_level_inputs.level = output_level_;
     vstorage_->GetOverlappingInputs(output_level_, &smallest, &largest,

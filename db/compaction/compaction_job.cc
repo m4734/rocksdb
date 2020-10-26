@@ -962,6 +962,8 @@ void CompactionJob::ProcessKeyValueCompaction(SubcompactionState* sub_compact) {
   const auto& c_iter_stats = c_iter->iter_stats();
   bool key_upper; //cgmin
 
+	printf("upper range %*.s %*.s\n",(int)sub_compact->compaction->smallest_key_upper_.size(),sub_compact->compaction->smallest_key_upper_.data(),(int)sub_compact->compaction->largest_key_upper_.size(),sub_compact->compaction->largest_key_upper_.data());
+
   while (status.ok() && !cfd->IsDropped() && c_iter->Valid()) {
     // Invariant: c_iter.status() is guaranteed to be OK if c_iter->Valid()
     // returns true.
@@ -985,7 +987,7 @@ void CompactionJob::ProcessKeyValueCompaction(SubcompactionState* sub_compact) {
 
     //cgmin upper
 
-	printf("%.*s %d\n",(int)key.size(),key.data(),fhp_->get(key));
+//	printf("%.*s %d\n",(int)key.size(),key.data(),fhp_->get(key));
 
 	if (key_upper)
 	{
