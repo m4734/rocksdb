@@ -32,7 +32,15 @@ namespace ROCKSDB_NAMESPACE {
 			string_array[i] = new char[key_size];
 		sleep_time=100;
 
-		t = std::thread(run,&exit,&queue_start,&queue_ready,queue_size,sleep_time,&string_array,&size_array,&fv,fs,bs);
+		max_level = 9;
+		for (i=0;i<=max_level;i++)
+		{
+			hit_limit[i] = 1000;
+			compaction_count[i] = 10;
+		}
+//		hit_limit[0] = 10;
+
+//		t = std::thread(run,&exit,&queue_start,&queue_ready,queue_size,sleep_time,&string_array,&size_array,&fv,fs,bs);
 		printf("fh s\n");
 	}
 
@@ -50,7 +58,7 @@ namespace ROCKSDB_NAMESPACE {
 			delete string_array[i];
 		delete string_array;
 
-		t.join();
+//		t.join();
 		printf("fh f\n");
 	}
 
@@ -135,5 +143,19 @@ namespace ROCKSDB_NAMESPACE {
 			else
 			usleep(sleep_time);
 		}
+	}
+	void FH::adjust_hit_limit(int avg_hit,int level)
+	{
+		hit_limit[level] = avg_hit;
+		/*
+		if (hit_limit[level] == 0)
+			hit_limit[level] = avg_hit;
+		//mutex lock
+//		printf("%d %d %d\n",avg_hit,hit_limit[level],compaction_count[level]);
+//		hit_limit[level] = (hit_limit[level]*compaction_count[level]+avg_hit)/(compaction_count[level]+1);
+		hit_limit[level] = (hit_limit[level]*2+avg_hit)/3;
+//		hit_limit[level] = (hit_limit[level]*9+avg_hit)/10;
+		compaction_count[level]++;
+		*/
 	}
 }

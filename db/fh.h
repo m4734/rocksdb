@@ -44,6 +44,11 @@ class FH
 		void enqueue(const Slice& key);
 		static void run(volatile bool* exit_s, int* queue_start_s, std::atomic<int>* queue_ready_s, int queue_size, int sleep_time, char*** string_array_s, size_t** size_array_s, uint32_t*** fv_s, int fs, int bs);
 
+		int max_level;
+		int hit_limit[10];
+		int compaction_count[10];
+		void adjust_hit_limit(int avg_hit,int level);
+
 };
 
 }

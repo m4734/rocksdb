@@ -204,6 +204,8 @@ struct FileMetaData {
     }
     return kUnknownFileCreationTime;
   }
+
+  bool upper = false; //cgmin meta
 };
 
 // A compressed copy of file meta data that just contain minimum data needed

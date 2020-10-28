@@ -434,7 +434,7 @@ void CompactionJob::Prepare() {
       c->column_family_data()->CalculateSSTWriteHint(c->output_level());
   bottommost_level_ = c->bottommost_level();
 //printf("sl %d ol %d\n",c->start_level(),c->output_level()); //cgmin print
-  printf("Prepare level %d(%d) %lu/%lu -> %d(%d) %lu/%lu %lu + %lu %p\n",c->start_level(),c->column_family_data()->current()->storage_info()->NumLevelFiles(c->start_level()),c->column_family_data()->current()->storage_info()->NumLevelBytes(c->start_level())/1000000,c->column_family_data()->current()->storage_info()->MaxBytesForLevel(c->start_level())/1000000,c->output_level(),c->column_family_data()->current()->storage_info()->NumLevelFiles(c->output_level()),c->column_family_data()->current()->storage_info()->NumLevelBytes(c->output_level())/1000000,c->column_family_data()->current()->storage_info()->MaxBytesForLevel(c->start_level())/1000000,c->input_levels(0)->num_files,c->input_levels(1)->num_files,c); //cgmin print
+//  printf("Prepare level %d(%d) %lu/%lu -> %d(%d) %lu/%lu %lu + %lu %p\n",c->start_level(),c->column_family_data()->current()->storage_info()->NumLevelFiles(c->start_level()),c->column_family_data()->current()->storage_info()->NumLevelBytes(c->start_level())/1000000,c->column_family_data()->current()->storage_info()->MaxBytesForLevel(c->start_level())/1000000,c->output_level(),c->column_family_data()->current()->storage_info()->NumLevelFiles(c->output_level()),c->column_family_data()->current()->storage_info()->NumLevelBytes(c->output_level())/1000000,c->column_family_data()->current()->storage_info()->MaxBytesForLevel(c->start_level())/1000000,c->input_levels(0)->num_files,c->input_levels(1)->num_files,c); //cgmin print
 
   if (c->ShouldFormSubcompactions()) {
     {
@@ -674,6 +674,9 @@ Status CompactionJob::Run() {
       for (const auto& output : state.outputs) {
         files_meta.emplace_back(&output.meta);
       }
+      for (const auto& output : state.outputs_upper) { //cgmin meta???
+	      files_meta.emplace_back(&output.meta);
+      }
     }
     ColumnFamilyData* cfd = compact_->compaction->column_family_data();
     auto prefix_extractor =
@@ -691,14 +694,19 @@ Status CompactionJob::Run() {
         // No matter whether use_direct_io_for_flush_and_compaction is true,
         // we will regard this verification as user reads since the goal is
         // to cache it here for further user reads
+	
+	int output_level = compact_->compaction->output_level(); //cgmin meta
+	if (files_meta[file_idx]->upper == true && output_level > 0)
+		--output_level;
+
         InternalIterator* iter = cfd->table_cache()->NewIterator(
             ReadOptions(), file_options_, cfd->internal_comparator(),
             *files_meta[file_idx], /*range_del_agg=*/nullptr, prefix_extractor,
             /*table_reader_ptr=*/nullptr,
             cfd->internal_stats()->GetFileReadHist(
-                compact_->compaction->output_level()),
+                /*compact_->compaction->output_level()*/output_level),
             TableReaderCaller::kCompactionRefill, /*arena=*/nullptr,
-            /*skip_filters=*/false, compact_->compaction->output_level(),
+            /*skip_filters=*/false, /*compact_->compaction->output_level()*/output_level, //cgmin meta
             MaxFileSizeForL0MetaPin(
                 *compact_->compaction->mutable_cf_options()),
             /*smallest_compaction_key=*/nullptr,
@@ -743,6 +751,12 @@ Status CompactionJob::Run() {
                         output.meta.fd.GetNumber(), output.meta.fd.GetPathId());
       tp[fn] = output.table_properties;
     }
+    for (const auto& output : state.outputs_upper) { //cgmin upper
+      auto fn =
+          TableFileName(state.compaction->immutable_cf_options()->cf_paths,
+                        output.meta.fd.GetNumber(), output.meta.fd.GetPathId());
+      tp[fn] = output.table_properties;
+    }
   }
   compact_->compaction->SetOutputTableProperties(std::move(tp));
 
@@ -766,7 +780,7 @@ Status CompactionJob::Install(const MutableCFOptions& mutable_cf_options) {
   ColumnFamilyData* cfd = compact_->compaction->column_family_data();
   cfd->internal_stats()->AddCompactionStats(
       compact_->compaction->output_level(), thread_pri_, compaction_stats_);
-
+//cgmin upper???
 
   if (status.ok()) {
     status = InstallCompactionResults(mutable_cf_options);
@@ -775,7 +789,7 @@ Status CompactionJob::Install(const MutableCFOptions& mutable_cf_options) {
     io_status_ = versions_->io_status();
   }
 //  printf("Install level %d(%d) %lu/%lu -> %d(%d) %lu/%lu %p\n",c->start_level(),c->column_family_data()->current()->storage_info()->NumLevelFiles(c->start_level()),c->column_family_data()->current()->storage_info()->NumLevelBytes(c->start_level())/1000000,c->column_family_data()->current()->storage_info()->MaxBytesForLevel(c->start_level())/1000000,c->output_level(),c->column_family_data()->current()->storage_info()->NumLevelFiles(c->output_level()),c->column_family_data()->current()->storage_info()->NumLevelBytes(c->output_level())/1000000,c->column_family_data()->current()->storage_info()->MaxBytesForLevel(c->start_level())/1000000,c); //cgmin print
-  printf("Install level %d(%d) %lu/%lu -> %d(%d) %lu/%lu %lu + %lu %p\n",compact_->compaction->start_level(),cfd->current()->storage_info()->NumLevelFiles(compact_->compaction->start_level()),cfd->current()->storage_info()->NumLevelBytes(compact_->compaction->start_level())/1000000,cfd->current()->storage_info()->MaxBytesForLevel(compact_->compaction->start_level())/1000000,compact_->compaction->output_level(),cfd->current()->storage_info()->NumLevelFiles(compact_->compaction->output_level()),cfd->current()->storage_info()->NumLevelBytes(compact_->compaction->output_level())/1000000,cfd->current()->storage_info()->MaxBytesForLevel(compact_->compaction->output_level())/1000000,compact_->compaction->input_levels(0)->num_files,compact_->compaction->input_levels(1)->num_files,compact_->compaction); //cgmin print
+//  printf("Install level %d(%d) %lu/%lu -> %d(%d) %lu/%lu %lu + %lu %p\n",compact_->compaction->start_level(),cfd->current()->storage_info()->NumLevelFiles(compact_->compaction->start_level()),cfd->current()->storage_info()->NumLevelBytes(compact_->compaction->start_level())/1000000,cfd->current()->storage_info()->MaxBytesForLevel(compact_->compaction->start_level())/1000000,compact_->compaction->output_level(),cfd->current()->storage_info()->NumLevelFiles(compact_->compaction->output_level()),cfd->current()->storage_info()->NumLevelBytes(compact_->compaction->output_level())/1000000,cfd->current()->storage_info()->MaxBytesForLevel(compact_->compaction->output_level())/1000000,compact_->compaction->input_levels(0)->num_files,compact_->compaction->input_levels(1)->num_files,compact_->compaction); //cgmin print
 
   VersionStorageInfo::LevelSummaryStorage tmp;
   auto vstorage = cfd->current()->storage_info();
@@ -961,8 +975,30 @@ void CompactionJob::ProcessKeyValueCompaction(SubcompactionState* sub_compact) {
   }
   const auto& c_iter_stats = c_iter->iter_stats();
   bool key_upper; //cgmin
+  uint32_t hit,hit_cnt,hit_limit,upper_cnt,lower_cnt,upper_file,lower_file;
+  uint64_t hit_sum;
+  hit_sum = 0;
+  hit_cnt = 0;
+  lower_cnt=0;
+  upper_cnt=0;
+  lower_file=0;
+  upper_file=0;
 
-	printf("upper range %*.s %*.s\n",(int)sub_compact->compaction->smallest_key_upper_.size(),sub_compact->compaction->smallest_key_upper_.data(),(int)sub_compact->compaction->largest_key_upper_.size(),sub_compact->compaction->largest_key_upper_.data());
+//	printf("upper range %*.s %*.s\n",(int)sub_compact->compaction->smallest_key_upper_.size(),sub_compact->compaction->smallest_key_upper_.data(),(int)sub_compact->compaction->largest_key_upper_.size(),sub_compact->compaction->largest_key_upper_.data());
+
+//	printf("level %d hit limit %d\n",sub_compact->compaction->start_level(),fhp_->hit_limit[sub_compact->compaction->start_level()]);
+
+	hit_limit = fhp_->hit_limit[sub_compact->compaction->start_level()];
+	if (hit_limit == 0)
+		hit_limit = fhp_->hit_limit[sub_compact->compaction->start_level()-1];
+
+	int sc_output_level = sub_compact->compaction->output_level();
+		if (sc_output_level > 0)
+			--sc_output_level;
+
+		if (sub_compact->compaction->output_level() == 0)
+			hit_limit=999999999;
+			
 
   while (status.ok() && !cfd->IsDropped() && c_iter->Valid()) {
     // Invariant: c_iter.status() is guaranteed to be OK if c_iter->Valid()
@@ -983,19 +1019,35 @@ void CompactionJob::ProcessKeyValueCompaction(SubcompactionState* sub_compact) {
       RecordCompactionIOStats();
     }
 
-    key_upper = false; //cgmin temp
+//    key_upper = false; //cgmin temp
 
     //cgmin upper
 
 //	printf("%.*s %d\n",(int)key.size(),key.data(),fhp_->get(key));
+    hit = fhp_->get(key);
+    hit_sum+=hit;
+    ++hit_cnt;
+
+	if (hit > hit_limit * 2 && cfd->user_comparator()->Compare(c_iter->user_key(),sub_compact->compaction->smallest_key_upper_) >= 0 && cfd->user_comparator()->Compare(c_iter->user_key(),sub_compact->compaction->largest_key_upper_) <= 0 ) // upper range check
+	{
+		key_upper = true;
+//		if (hit_limit > 10)
+//			printf("%d > %d *2\n",hit,hit_limit);
+		++upper_cnt;
+	}
+	else
+	{
+		key_upper = false;
+		++lower_cnt;
+	}
+
+//	key_upper = false;
 
 	if (key_upper)
 	{
-	int sc_output_level = sub_compact->compaction->output_level();
-		if (sc_output_level > 0)
-			--sc_output_level;
     // Open output file if necessary
     if (sub_compact->builder_upper == nullptr) {
+	    ++upper_file;
       status = OpenCompactionOutputFile_upper(sub_compact); //cgmin upper
       if (!status.ok()) {
         break;
@@ -1067,11 +1119,13 @@ void CompactionJob::ProcessKeyValueCompaction(SubcompactionState* sub_compact) {
 	{
     // Open output file if necessary
     if (sub_compact->builder == nullptr) {
+	    ++lower_file;
       status = OpenCompactionOutputFile(sub_compact); 
       if (!status.ok()) {
         break;
       }
     }
+
 
     assert(sub_compact->builder != nullptr);
     assert(sub_compact->current_output() != nullptr);
@@ -1134,6 +1188,12 @@ void CompactionJob::ProcessKeyValueCompaction(SubcompactionState* sub_compact) {
     }
 	}
   }
+
+//	printf("sum %lu cnt %d avg %lu\n",hit_sum,hit_cnt,hit_sum/hit_cnt);
+//  printf("Install level %d(%d) %lu/%lu -> %d(%d) %lu/%lu %lu + %lu %p\n",compact_->compaction->start_level(),cfd->current()->storage_info()->NumLevelFiles(compact_->compaction->start_level()),cfd->current()->storage_info()->NumLevelBytes(compact_->compaction->start_level())/1000000,cfd->current()->storage_info()->MaxBytesForLevel(compact_->compaction->start_level())/1000000,compact_->compaction->output_level(),cfd->current()->storage_info()->NumLevelFiles(compact_->compaction->output_level()),cfd->current()->storage_info()->NumLevelBytes(compact_->compaction->output_level())/1000000,cfd->current()->storage_info()->MaxBytesForLevel(compact_->compaction->output_level())/1000000,compact_->compaction->input_levels(0)->num_files,compact_->compaction->input_levels(1)->num_files,compact_->compaction); //cgmin print
+
+  printf("level %d - %d upper_cnt %d upper_file %d\nlower_cnt %d lower_file %d\n",sub_compact->compaction->start_level(),sub_compact->compaction->output_level(),upper_cnt,upper_file,lower_cnt,lower_file);
+    fhp_->adjust_hit_limit(hit_sum/hit_cnt,sub_compact->compaction->start_level());//cgmin hit
 
   sub_compact->compaction_job_stats.num_input_deletion_records =
       c_iter_stats.num_input_deletion_records;
@@ -1801,7 +1861,7 @@ Status CompactionJob::FinishCompactionOutputFile_upper(
     // Also need to remove the file from outputs, or it will be added to the
     // VersionEdit.
     assert(!sub_compact->outputs_upper.empty());
-    sub_compact->outputs.pop_back();
+    sub_compact->outputs_upper.pop_back();
     meta = nullptr;
   }
 
@@ -2085,6 +2145,7 @@ Status CompactionJob::OpenCompactionOutputFile_upper(
     out.meta.oldest_ancester_time = oldest_ancester_time;
     out.meta.file_creation_time = current_time;
     out.finished = false;
+    out.meta.upper = true; //cgmin meta
 	    sub_compact->outputs_upper.push_back(out); //cgmin upper
   }
 
@@ -2137,6 +2198,23 @@ void CompactionJob::CleanupCompaction() {
         TableCache::Evict(table_cache_.get(), out.meta.fd.GetNumber());
       }
     }
+
+    //cgmin upper
+    if (sub_compact.builder_upper != nullptr) {
+      // May happen if we get a shutdown call in the middle of compaction
+      sub_compact.builder_upper->Abandon();
+      sub_compact.builder_upper.reset();
+    } else {
+      assert(!sub_status.ok() || sub_compact.outfile_upper == nullptr);
+    }
+    for (const auto& out : sub_compact.outputs_upper) {
+      // If this file was inserted into the table cache then remove
+      // them here because this compaction was not committed.
+      if (!sub_status.ok()) {
+        TableCache::Evict(table_cache_.get(), out.meta.fd.GetNumber());
+      }
+    }
+
   }
   delete compact_;
   compact_ = nullptr;
@@ -2187,6 +2265,8 @@ void CompactionJob::UpdateCompactionStats() {
     for (const auto& out : sub_compact.outputs) {
       compaction_stats_.bytes_written += out.meta.fd.file_size;
     }
+
+    //cgmin stat???
   }
 
   if (compaction_stats_.num_input_records > num_output_records) {
