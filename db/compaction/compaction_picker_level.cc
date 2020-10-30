@@ -336,7 +336,7 @@ Compaction* LevelCompactionBuilder::GetCompaction() {
                          output_level_, vstorage_->base_level()),
       GetCompressionOptions(mutable_cf_options_, vstorage_, output_level_),
       /* max_subcompactions */ 0, std::move(grandparents_), is_manual_,
-      start_level_score_, false /* deletion_compaction */, compaction_reason_,smallest_key_upper,largest_key_upper); //cgmin upper range
+      start_level_score_, false /* deletion_compaction */);//, compaction_reason_,smallest_key_upper,largest_key_upper); //cgmin upper range
 
   // If it's level 0 compaction, make sure we don't execute any other level 0
   // compactions in parallel
@@ -404,7 +404,7 @@ uint32_t LevelCompactionBuilder::GetPathId(
   return p;
 }
 
-bool LevelCompactionBuilder::PickFileToCompact() {
+bool LevelCompactionBuilder::PickFileToCompact() { // cgmin pick in level
   // level 0 files are overlapping. So we cannot pick more
   // than one concurrent compactions at this level. This
   // could be made better by looking at key-ranges that are

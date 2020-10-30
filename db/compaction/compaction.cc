@@ -214,7 +214,7 @@ Compaction::Compaction(VersionStorageInfo* vstorage,
                        std::vector<FileMetaData*> _grandparents,
                        bool _manual_compaction, double _score,
                        bool _deletion_compaction,
-                       CompactionReason _compaction_reason, Slice smallest_key_upper, Slice largest_key_upper) //cgmin range upper
+                       CompactionReason _compaction_reason)// Slice smallest_key_upper, Slice largest_key_upper) //cgmin range upper
     : input_vstorage_(vstorage),
       start_level_(_inputs[0].level),
       output_level_(_output_level),
@@ -237,7 +237,7 @@ Compaction::Compaction(VersionStorageInfo* vstorage,
       is_full_compaction_(IsFullCompaction(vstorage, inputs_)),
       is_manual_compaction_(_manual_compaction),
       is_trivial_move_(false),
-      compaction_reason_(_compaction_reason),smallest_key_upper_(smallest_key_upper),largest_key_upper_(largest_key_upper) { //cgmin range upper
+	compaction_reason_(_compaction_reason) {//,smallest_key_upper_(smallest_key_upper),largest_key_upper_(largest_key_upper) { //cgmin range upper
   MarkFilesBeingCompacted(true);
   if (is_manual_compaction_) {
     compaction_reason_ = CompactionReason::kManualCompaction;

@@ -278,10 +278,11 @@ struct CompactionJob::CompactionState {
     size_t total = 0;
     for (auto& s : sub_compact_states) {
       total += s.outputs.size();
+      total += s.outputs_upper.size(); //cgmin upper
     }
     return total;
   }
-
+//cgmin max min key?
   Slice SmallestUserKey() {
     for (const auto& sub_compact_state : sub_compact_states) {
       if (!sub_compact_state.outputs.empty() &&
@@ -460,6 +461,7 @@ void CompactionJob::Prepare() {
       printf("%.*s",(int)end->size(),end->data());
       printf("\n");
       */
+      printf("sub\n"); //cgmin print
     }
     RecordInHistogram(stats_, NUM_SUBCOMPACTIONS_SCHEDULED,
                       compact_->sub_compact_states.size());
@@ -467,6 +469,31 @@ void CompactionJob::Prepare() {
     compact_->sub_compact_states.emplace_back(c, nullptr, nullptr);
 //    printf("no sub\n"); //cgmin print
   }
+  //cgmin test
+/*
+  int start_lvl = c->start_level();
+  int out_lvl = c->output_level();
+
+  for (size_t lvl_idx = 0; lvl_idx < c->num_input_levels(); lvl_idx++) {
+    int lvl = c->level(lvl_idx);
+    if (lvl >= start_lvl && lvl <= out_lvl) {
+      const LevelFilesBrief* flevel = c->input_levels(lvl_idx);
+      size_t num_files = flevel->num_files;
+
+      if (num_files == 0) {
+        continue;
+      }
+      for (size_t i=0;i<num_files;i++)
+      printf("input file %d %s %s\n",lvl,flevel->files[i].smallest_key.ToString(false).c_str(),flevel->files[i].largest_key.ToString(false).c_str()); //cgmin test
+    }
+  }
+*/
+  //cgmin upper key range
+  const LevelFilesBrief* flevel = c->input_levels(0);
+  size_t num_files = flevel->num_files;
+  c->smallest_key_upper_ = flevel->files[0].smallest_key;
+  c->largest_key_upper_ = flevel->files[num_files-1].largest_key;
+
 }
 
 struct RangeWithSize {
@@ -635,7 +662,6 @@ Status CompactionJob::Run() {
   for (auto& thread : thread_pool) {
     thread.join();
   }
-
   compaction_stats_.micros = env_->NowMicros() - start_micros;
   compaction_stats_.cpu_micros = 0;
   for (size_t i = 0; i < compact_->sub_compact_states.size(); i++) {
@@ -666,7 +692,6 @@ Status CompactionJob::Run() {
     io_status_ = io_s;
     status = io_s;
   }
-
   if (status.ok()) {
     thread_pool.clear();
     std::vector<const FileMetaData*> files_meta;
@@ -683,6 +708,7 @@ Status CompactionJob::Run() {
         compact_->compaction->mutable_cf_options()->prefix_extractor.get();
     std::atomic<size_t> next_file_meta_idx(0);
     auto verify_table = [&](Status& output_status) {
+	    
       while (true) {
         size_t file_idx = next_file_meta_idx.fetch_add(1);
         if (file_idx >= files_meta.size()) {
@@ -697,7 +723,9 @@ Status CompactionJob::Run() {
 	
 	int output_level = compact_->compaction->output_level(); //cgmin meta
 	if (files_meta[file_idx]->upper == true && output_level > 0)
+	{
 		--output_level;
+	}
 
         InternalIterator* iter = cfd->table_cache()->NewIterator(
             ReadOptions(), file_options_, cfd->internal_comparator(),
@@ -742,7 +770,6 @@ Status CompactionJob::Run() {
       }
     }
   }
-
   TablePropertiesCollection tp;
   for (const auto& state : compact_->sub_compact_states) {
     for (const auto& output : state.outputs) {
@@ -751,22 +778,22 @@ Status CompactionJob::Run() {
                         output.meta.fd.GetNumber(), output.meta.fd.GetPathId());
       tp[fn] = output.table_properties;
     }
+    
     for (const auto& output : state.outputs_upper) { //cgmin upper
       auto fn =
           TableFileName(state.compaction->immutable_cf_options()->cf_paths,
                         output.meta.fd.GetNumber(), output.meta.fd.GetPathId());
       tp[fn] = output.table_properties;
     }
+    
   }
   compact_->compaction->SetOutputTableProperties(std::move(tp));
-
   // Finish up all book-keeping to unify the subcompaction results
   AggregateStatistics();
   UpdateCompactionStats();
   RecordCompactionIOStats();
   LogFlush(db_options_.info_log);
   TEST_SYNC_POINT("CompactionJob::Run():End");
-
   compact_->status = status;
   return status;
 }
@@ -871,7 +898,6 @@ Status CompactionJob::Install(const MutableCFOptions& mutable_cf_options) {
     stream << vstorage->NumLevelFiles(level);
   }
   stream.EndArray();
-
   CleanupCompaction();
   return status;
 }
@@ -1238,6 +1264,14 @@ void CompactionJob::ProcessKeyValueCompaction(SubcompactionState* sub_compact) {
     // handle subcompaction containing only range deletions
     status = OpenCompactionOutputFile(sub_compact);
   }
+
+  //cgmin ???
+  if (status.ok() && sub_compact->builder_upper == nullptr &&
+      sub_compact->outputs_upper.size() == 0 && !range_del_agg.IsEmpty()) {
+    // handle subcompaction containing only range deletions
+    status = OpenCompactionOutputFile_upper(sub_compact);
+  }
+
 
   // Call FinishCompactionOutputFile() even if status is not ok: it needs to
   // close the output file.
@@ -1649,7 +1683,7 @@ Status CompactionJob::FinishCompactionOutputFile_upper(
     std::string smallest_user_key;
     const Slice *lower_bound, *upper_bound;
     bool lower_bound_from_sub_compact = false;
-    if (sub_compact->outputs.size() == 1) {
+    if (sub_compact->outputs_upper.size() == 1) {
       // For the first output table, include range tombstones before the min key
       // but after the subcompaction boundary.
       lower_bound = sub_compact->start;
@@ -1739,7 +1773,7 @@ Status CompactionJob::FinishCompactionOutputFile_upper(
       auto kv = tombstone.Serialize();
       assert(lower_bound == nullptr ||
              ucmp->Compare(*lower_bound, kv.second) < 0);
-      sub_compact->builder->Add(kv.first.Encode(), kv.second);
+      sub_compact->builder_upper->Add(kv.first.Encode(), kv.second);
       InternalKey smallest_candidate = std::move(kv.first);
       if (lower_bound != nullptr &&
           ucmp->Compare(smallest_candidate.user_key(), *lower_bound) <= 0) {
@@ -1949,16 +1983,20 @@ Status CompactionJob::InstallCompactionResults(
   for (const auto& sub_compact : compact_->sub_compact_states) {
     for (const auto& out : sub_compact.outputs) {
       compaction->edit()->AddFile(compaction->output_level(), out.meta);
+//      printf("add file %d %s %s\n",compaction->output_level(),out.meta.smallest.user_key().ToString(false).c_str(),out.meta.largest.user_key().ToString(false).c_str()); //cgmin test
     }
   }
 
 //cgmin addfile upper here
+  
   for (const auto& sub_compact : compact_->sub_compact_states) {
     for (const auto& out : sub_compact.outputs_upper) {
-	    if (compaction->output_level() == 0)
-		      compaction->edit()->AddFile(compaction->output_level(), out.meta); // level0 ???
-	    else
-      compaction->edit()->AddFile(compaction->output_level()-1, out.meta); // level0 ???
+	    int output_level = compaction->output_level();
+	    if (compaction->output_level() > 0)
+		    --output_level;
+		      compaction->edit()->AddFile(output_level, out.meta); // level0 ???
+//	    printf("add file %d %s %s\n",output_level,out.meta.smallest.user_key().ToString(false).c_str(),out.meta.largest.user_key().ToString(false).c_str()); //cgmin test
+
     }
   }
 
@@ -2079,7 +2117,6 @@ Status CompactionJob::OpenCompactionOutputFile(
 
 Status CompactionJob::OpenCompactionOutputFile_upper(
     SubcompactionState* sub_compact) { //cgmin upper level
-
 	int sc_output_level = sub_compact->compaction->output_level();
 			    if (sc_output_level > 0)
 				    --sc_output_level;
