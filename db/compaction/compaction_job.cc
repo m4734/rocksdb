@@ -435,7 +435,7 @@ void CompactionJob::Prepare() {
       c->column_family_data()->CalculateSSTWriteHint(c->output_level());
   bottommost_level_ = c->bottommost_level();
 //printf("sl %d ol %d\n",c->start_level(),c->output_level()); //cgmin print
-//  printf("Prepare level %d(%d) %lu/%lu -> %d(%d) %lu/%lu %lu + %lu %p\n",c->start_level(),c->column_family_data()->current()->storage_info()->NumLevelFiles(c->start_level()),c->column_family_data()->current()->storage_info()->NumLevelBytes(c->start_level())/1000000,c->column_family_data()->current()->storage_info()->MaxBytesForLevel(c->start_level())/1000000,c->output_level(),c->column_family_data()->current()->storage_info()->NumLevelFiles(c->output_level()),c->column_family_data()->current()->storage_info()->NumLevelBytes(c->output_level())/1000000,c->column_family_data()->current()->storage_info()->MaxBytesForLevel(c->start_level())/1000000,c->input_levels(0)->num_files,c->input_levels(1)->num_files,c); //cgmin print
+  printf("Prepare level %d(%d) %lu/%lu -> %d(%d) %lu/%lu %lu + %lu %p\n",c->start_level(),c->column_family_data()->current()->storage_info()->NumLevelFiles(c->start_level()),c->column_family_data()->current()->storage_info()->NumLevelBytes(c->start_level())/1000000,c->column_family_data()->current()->storage_info()->MaxBytesForLevel(c->start_level())/1000000,c->output_level(),c->column_family_data()->current()->storage_info()->NumLevelFiles(c->output_level()),c->column_family_data()->current()->storage_info()->NumLevelBytes(c->output_level())/1000000,c->column_family_data()->current()->storage_info()->MaxBytesForLevel(c->output_level())/1000000,c->input_levels(0)->num_files,c->input_levels(1)->num_files,c); //cgmin print
 
   if (c->ShouldFormSubcompactions()) {
     {
@@ -484,7 +484,7 @@ void CompactionJob::Prepare() {
         continue;
       }
       for (size_t i=0;i<num_files;i++)
-      printf("input file %d %s %s\n",lvl,flevel->files[i].smallest_key.ToString(false).c_str(),flevel->files[i].largest_key.ToString(false).c_str()); //cgmin test
+      printf("input file %d %lu %s %s\n",lvl,flevel->files[i].fd.GetFileSize(),flevel->files[i].smallest_key.ToString(false).c_str(),flevel->files[i].largest_key.ToString(false).c_str()); //cgmin test
     }
   }
 */
@@ -1000,8 +1000,8 @@ void CompactionJob::ProcessKeyValueCompaction(SubcompactionState* sub_compact) {
                                   sub_compact->current_output_file_size);
   }
   const auto& c_iter_stats = c_iter->iter_stats();
-  bool key_upper; //cgmin
-  uint32_t hit,hit_cnt,hit_limit,upper_cnt,lower_cnt,upper_file,lower_file;
+  bool key_upper,disable; //cgmin
+  uint32_t hit,hit_cnt,hit_limit,upper_cnt,lower_cnt,upper_file,lower_file,hit_max;
   uint64_t hit_sum;
   hit_sum = 0;
   hit_cnt = 0;
@@ -1009,6 +1009,9 @@ void CompactionJob::ProcessKeyValueCompaction(SubcompactionState* sub_compact) {
   upper_cnt=0;
   lower_file=0;
   upper_file=0;
+  hit_max = 0;
+  disable = false;
+//  disable = true;
 
 //	printf("upper range %*.s %*.s\n",(int)sub_compact->compaction->smallest_key_upper_.size(),sub_compact->compaction->smallest_key_upper_.data(),(int)sub_compact->compaction->largest_key_upper_.size(),sub_compact->compaction->largest_key_upper_.data());
 
@@ -1022,8 +1025,11 @@ void CompactionJob::ProcessKeyValueCompaction(SubcompactionState* sub_compact) {
 		if (sc_output_level > 0)
 			--sc_output_level;
 
-		if (sub_compact->compaction->output_level() == 0)
+		if (sub_compact->compaction->output_level() <= 0)
+		{
 			hit_limit=999999999;
+			disable = true;
+		}
 			
 
   while (status.ok() && !cfd->IsDropped() && c_iter->Valid()) {
@@ -1051,10 +1057,13 @@ void CompactionJob::ProcessKeyValueCompaction(SubcompactionState* sub_compact) {
 
 //	printf("%.*s %d\n",(int)key.size(),key.data(),fhp_->get(key));
     hit = fhp_->get(key);
+    /*
     hit_sum+=hit;
     ++hit_cnt;
-
-	if (hit > hit_limit * 2 && cfd->user_comparator()->Compare(c_iter->user_key(),sub_compact->compaction->smallest_key_upper_) >= 0 && cfd->user_comparator()->Compare(c_iter->user_key(),sub_compact->compaction->largest_key_upper_) <= 0 ) // upper range check
+    */
+if (hit > hit_max)
+	hit_max = hit;
+	if (disable == false && hit > hit_limit && (sub_compact->compaction->start_level() == 0 || (cfd->user_comparator()->Compare(c_iter->user_key(),sub_compact->compaction->smallest_key_upper_) >= 0 && cfd->user_comparator()->Compare(c_iter->user_key(),sub_compact->compaction->largest_key_upper_) <= 0 ))) // upper range check
 	{
 		key_upper = true;
 //		if (hit_limit > 10)
@@ -1065,7 +1074,15 @@ void CompactionJob::ProcessKeyValueCompaction(SubcompactionState* sub_compact) {
 	{
 		key_upper = false;
 		++lower_cnt;
+
+		hit_sum+=hit;
+		++hit_cnt;
 	}
+
+	if (upper_cnt*10 >= lower_cnt)
+		hit_limit=hit_limit*11/10+1;
+	else
+		hit_limit=hit_limit*9/10+1;
 
 //	key_upper = false;
 
@@ -1218,8 +1235,9 @@ void CompactionJob::ProcessKeyValueCompaction(SubcompactionState* sub_compact) {
 //	printf("sum %lu cnt %d avg %lu\n",hit_sum,hit_cnt,hit_sum/hit_cnt);
 //  printf("Install level %d(%d) %lu/%lu -> %d(%d) %lu/%lu %lu + %lu %p\n",compact_->compaction->start_level(),cfd->current()->storage_info()->NumLevelFiles(compact_->compaction->start_level()),cfd->current()->storage_info()->NumLevelBytes(compact_->compaction->start_level())/1000000,cfd->current()->storage_info()->MaxBytesForLevel(compact_->compaction->start_level())/1000000,compact_->compaction->output_level(),cfd->current()->storage_info()->NumLevelFiles(compact_->compaction->output_level()),cfd->current()->storage_info()->NumLevelBytes(compact_->compaction->output_level())/1000000,cfd->current()->storage_info()->MaxBytesForLevel(compact_->compaction->output_level())/1000000,compact_->compaction->input_levels(0)->num_files,compact_->compaction->input_levels(1)->num_files,compact_->compaction); //cgmin print
 
-  printf("level %d - %d upper_cnt %d upper_file %d\nlower_cnt %d lower_file %d\n",sub_compact->compaction->start_level(),sub_compact->compaction->output_level(),upper_cnt,upper_file,lower_cnt,lower_file);
-    fhp_->adjust_hit_limit(hit_sum/hit_cnt,sub_compact->compaction->start_level());//cgmin hit
+  printf("level %d - %d upper_cnt %d upper_file %d lower_cnt %d lower_file %d avg %d sum %lu\n",sub_compact->compaction->start_level(),sub_compact->compaction->output_level(),upper_cnt,upper_file,lower_cnt,lower_file,hit_limit,hit_sum);
+  if (disable == false)
+    fhp_->adjust_hit_limit(/*hit_sum/hit_cnt*//*hit_max/2*/hit_limit,sub_compact->compaction->/*start*/output_level());//cgmin hit
 
   sub_compact->compaction_job_stats.num_input_deletion_records =
       c_iter_stats.num_input_deletion_records;
@@ -2304,12 +2322,28 @@ void CompactionJob::UpdateCompactionStats() {
     }
 
     //cgmin stat???
+
+    size_t num_output_files_upper = sub_compact.outputs_upper.size();
+    if (sub_compact.builder_upper != nullptr) {
+      // An error occurred so ignore the last output.
+      assert(num_output_files_upper > 0);
+      --num_output_files_upper;
+    }
+    compaction_stats_.num_output_files += static_cast<int>(num_output_files_upper);
+
+//    num_output_records += sub_compact.num_output_records;
+
+    for (const auto& out : sub_compact.outputs_upper) {
+      compaction_stats_.bytes_written += out.meta.fd.file_size;
+    }
+
   }
 
   if (compaction_stats_.num_input_records > num_output_records) {
     compaction_stats_.num_dropped_records =
         compaction_stats_.num_input_records - num_output_records;
   }
+  printf("input %lu output %lu drop %lu\n",compaction_stats_.num_input_records,num_output_records,compaction_stats_.num_dropped_records); //cgmin print
 }
 
 void CompactionJob::UpdateCompactionInputStatsHelper(int* num_files,

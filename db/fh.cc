@@ -9,7 +9,8 @@ namespace ROCKSDB_NAMESPACE {
 
 	FH::FH()
 	{
-		bs = 200000;
+		printf("fh 0\n");
+		bs = 200000*10;
 		fs = 1; //10;
 		fv = new uint32_t*[fs];
 		int i,j;
@@ -70,13 +71,14 @@ namespace ROCKSDB_NAMESPACE {
 		{
 			hv = hash(i,key);
 //			if (fv[i][hv] < 4294967295)
+			if (fv[i][hv] < 1000000000)
 				fv[i][hv]++;
 //			if (min > fv[i][hv])
 //				min = fv[i][hv];
 		}
 //		printf("%d\n",min);
 
-		++add_count;
+//		++add_count;
 	}
 
 	uint32_t FH::get(const Slice& key)
