@@ -1701,6 +1701,8 @@ Status DBImpl::GetImpl(const ReadOptions& read_options, const Slice& key,
     }
   }
   if (!done) {
+	fh.add(key);  //cgmin get from disk count
+	++fh.read_cnt;
     PERF_TIMER_GUARD(get_from_output_files_time);
     sv->current->Get(
         read_options, lkey, get_impl_options.value, timestamp, &s,

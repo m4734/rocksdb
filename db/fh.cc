@@ -10,15 +10,28 @@ namespace ROCKSDB_NAMESPACE {
 	FH::FH()
 	{
 		printf("fh 0\n");
-		bs = 200000*10;
+		bs = 200000*100;
 		fs = 1; //10;
 		fv = new uint32_t*[fs];
-		int i,j;
+		int i,j,k;
 		for (i=0;i<fs;i++)
 		{
 			fv[i] = new uint32_t[bs];
 			for (j=0;j<bs;j++)
 				fv[i][j] = 0;
+		}
+
+		lv = 5;
+		lfv = new uint32_t**[lv];
+		for (i=0;i<lv;i++)
+		{
+			lfv[i] = new uint32_t*[fs];
+			for (j=0;j<fs;j++)
+			{
+				lfv[i][j] = new uint32_t[bs];
+				for (k=0;k<bs;k++)
+					lfv[i][j][k] = 0;
+			}
 		}
 
 		exit = false;
@@ -41,6 +54,10 @@ namespace ROCKSDB_NAMESPACE {
 		}
 //		hit_limit[0] = 10;
 
+//		flush_sum=0;
+		read_cnt = 1;
+
+
 //		t = std::thread(run,&exit,&queue_start,&queue_ready,queue_size,sleep_time,&string_array,&size_array,&fv,fs,bs);
 		printf("fh s\n");
 	}
@@ -49,7 +66,7 @@ namespace ROCKSDB_NAMESPACE {
 	{
 		exit = true;
 
-		int i;
+		int i,j;
 		for (i=0;i<fs;i++)
 			delete fv[i];
 		delete fv;
@@ -58,6 +75,14 @@ namespace ROCKSDB_NAMESPACE {
 		for (i=9;i<queue_size;i++)
 			delete string_array[i];
 		delete string_array;
+
+		for (i=0;i<lv;i++)
+		{
+			for (j=0;j<fs;j++)
+				delete lfv[i][j];
+			delete lfv[i];
+		}
+		delete lfv;
 
 //		t.join();
 		printf("fh f\n");
@@ -90,6 +115,46 @@ namespace ROCKSDB_NAMESPACE {
 			hv = hash(i,key);
 			if (min > fv[i][hv])
 				min = fv[i][hv];
+		}
+		return min;
+	}
+
+	void FH::LevelAdd(int level, const Slice& key)
+	{
+		int i;
+		uint32_t hv;
+		for (i=0;i<fs;i++)
+		{
+			hv = hash(i,key);
+			if (lfv[level][i][hv] < 1000000000)
+				lfv[level][i][hv]++;
+		}
+	}
+
+	uint32_t FH::LevelGet(int level, const Slice& key)
+	{
+		int i;
+		uint32_t hv, min=999999999;
+		for (i=0;i<fs;i++)
+		{
+			hv = hash(i,key);
+			if (min > lfv[level][i][hv])
+				min = lfv[level][i][hv];
+		}
+		return min;
+	}
+
+	uint32_t FH::LevelAddGet(int level, const Slice &key)
+	{
+		int i;
+		uint32_t hv, min=999999999;
+		for (i=0;i<fs;i++)
+		{
+			hv = hash(i,key);
+			if (lfv[level][i][hv] < 1000000000)
+				lfv[level][i][hv]++;
+			if (min > lfv[level][i][hv])
+				min = lfv[level][i][hv];
 		}
 		return min;
 	}

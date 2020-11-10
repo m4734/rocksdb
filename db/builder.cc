@@ -37,6 +37,8 @@
 #include "test_util/sync_point.h"
 #include "util/stop_watch.h"
 
+//#include "db/fh.h" //cgmin fhp
+
 namespace ROCKSDB_NAMESPACE {
 
 class TableFactory;
@@ -85,7 +87,7 @@ Status BuildTable(
     EventLogger* event_logger, int job_id, const Env::IOPriority io_priority,
     TableProperties* table_properties, int level, const uint64_t creation_time,
     const uint64_t oldest_key_time, Env::WriteLifeTimeHint write_hint,
-    const uint64_t file_creation_time) {
+    const uint64_t file_creation_time, FH* fhp) { //cgmin fhp
   assert((column_family_id ==
           TablePropertiesCollectorFactory::Context::kUnknownColumnFamily) ==
          column_family_name.empty());
@@ -163,6 +165,18 @@ Status BuildTable(
       const ParsedInternalKey& ikey = c_iter.ikey();
       builder->Add(key, value);
       meta->UpdateBoundaries(key, value, ikey.sequence, ikey.type);
+      
+if (fhp != nullptr)
+{
+//	meta->write_sum+=fhp->LevelAddGet(0,key); //cgmin level0 addget
+//	meta->read_sum+=fhp->get(key);
+//	++meta->key_cnt;
+	if (false)
+		printf("test\n");
+}
+
+else
+	printf("eee\n");
 
       // TODO(noetzli): Update stats after flush, too.
       if (io_priority == Env::IO_HIGH &&
@@ -190,6 +204,20 @@ Status BuildTable(
       builder->Abandon();
     } else {
       s = builder->Finish();
+      /*
+      if (fhp != nullptr)
+      {
+//	      fhp->lv_sum[0]+=meta->write_sum; //cgmin write sum
+//	      meta->lv_sum = fhp->lv_sum[0];
+//	      printf("flush write sum %lu\n",meta->write_sum);
+//	      ++fhp->flush_sum;
+//	      meta->flush_sum = flush_sum;
+//	      meta->read_cnt = fhp->read_cnt;
+//	      meta->read_rate = (double)meta->read_sum / (double)meta->key_cnt / (double)meta->read_cnt;
+//	      meta->read_rate = (double)builder->FileSize()*-1;
+//	      meta->read_rate = 0;
+      }
+      */
     }
     *io_status = builder->io_status();
 

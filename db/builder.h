@@ -22,6 +22,8 @@
 #include "rocksdb/types.h"
 #include "table/scoped_arena_iterator.h"
 
+#include "db/fh.h" //cgmin fhp
+
 namespace ROCKSDB_NAMESPACE {
 
 struct Options;
@@ -83,6 +85,6 @@ extern Status BuildTable(
     TableProperties* table_properties = nullptr, int level = -1,
     const uint64_t creation_time = 0, const uint64_t oldest_key_time = 0,
     Env::WriteLifeTimeHint write_hint = Env::WLTH_NOT_SET,
-    const uint64_t file_creation_time = 0);
+    const uint64_t file_creation_time = 0,FH* fhp = nullptr); //cgmin fhp
 
 }  // namespace ROCKSDB_NAMESPACE

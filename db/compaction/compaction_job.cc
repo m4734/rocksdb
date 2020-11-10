@@ -493,7 +493,8 @@ void CompactionJob::Prepare() {
   size_t num_files = flevel->num_files;
   c->smallest_key_upper_ = flevel->files[0].smallest_key;
   c->largest_key_upper_ = flevel->files[num_files-1].largest_key;
-
+//printf("write_sum %lu / %lu\n",flevel->files[0].file_metadata->write_sum,fhp_->lv_sum[c->start_level()].load());
+//  printf("read sum %lu key cnt %lu read cnt %lu read rate %.10lf\n",flevel->files[0].file_metadata->read_sum,flevel->files[0].file_metadata->key_cnt,flevel->files[0].file_metadata->read_cnt,flevel->files[0].file_metadata->read_rate);
 }
 
 struct RangeWithSize {
@@ -1003,6 +1004,7 @@ void CompactionJob::ProcessKeyValueCompaction(SubcompactionState* sub_compact) {
   bool key_upper,disable; //cgmin
   uint32_t hit,hit_cnt,hit_limit,upper_cnt,lower_cnt,upper_file,lower_file,hit_max;
   uint64_t hit_sum;
+  uint64_t key_cnt;
   hit_sum = 0;
   hit_cnt = 0;
   lower_cnt=0;
@@ -1011,7 +1013,9 @@ void CompactionJob::ProcessKeyValueCompaction(SubcompactionState* sub_compact) {
   upper_file=0;
   hit_max = 0;
   disable = false;
-//  disable = true;
+  disable = true;
+
+  key_cnt = 1;
 
 //	printf("upper range %*.s %*.s\n",(int)sub_compact->compaction->smallest_key_upper_.size(),sub_compact->compaction->smallest_key_upper_.data(),(int)sub_compact->compaction->largest_key_upper_.size(),sub_compact->compaction->largest_key_upper_.data());
 
@@ -1056,7 +1060,8 @@ void CompactionJob::ProcessKeyValueCompaction(SubcompactionState* sub_compact) {
     //cgmin upper
 
 //	printf("%.*s %d\n",(int)key.size(),key.data(),fhp_->get(key));
-    hit = fhp_->get(key);
+//    hit = fhp_->get(key);
+    hit = fhp_->LevelGet(sub_compact->compaction->start_level(),key);
     /*
     hit_sum+=hit;
     ++hit_cnt;
@@ -1077,6 +1082,10 @@ if (hit > hit_max)
 
 		hit_sum+=hit;
 		++hit_cnt;
+// not yet open error!!!
+//		sub_compact->current_output()->meta.write_sum+=fhp_->LevelAddGet(sub_compact->compaction->output_level(),key);
+//		sub_compact->current_output()->meta.read_sum+=fhp_->get(key);
+		++key_cnt;
 	}
 
 	if (upper_cnt*10 >= lower_cnt)
@@ -1155,20 +1164,24 @@ if (hit > hit_max)
                                      &range_del_out_stats, next_key); //cgmin upper
       RecordDroppedKeys(range_del_out_stats,
                         &sub_compact->compaction_job_stats);
+      // cgmin yet 
     }
 
 	}
-	else
+	else // original
 	{
     // Open output file if necessary
     if (sub_compact->builder == nullptr) {
 	    ++lower_file;
+	    key_cnt=0;
       status = OpenCompactionOutputFile(sub_compact); 
       if (!status.ok()) {
         break;
       }
     }
 
+//	sub_compact->current_output()->meta.write_sum+=fhp_->LevelAddGet(sub_compact->compaction->output_level(),key);
+//    sub_compact->current_output()->meta.read_sum+=fhp_->get(key); // opened //cgmin read_sum
 
     assert(sub_compact->builder != nullptr);
     assert(sub_compact->current_output() != nullptr);
@@ -1228,6 +1241,15 @@ if (hit > hit_max)
                                      &range_del_out_stats, next_key);
       RecordDroppedKeys(range_del_out_stats,
                         &sub_compact->compaction_job_stats);
+//      fhp_->lv_sum[sub_compact->compaction->output_level()]+=sub_compact->current_output()->meta.write_sum;
+//      sub_compact->current_output()->meta.lv_sum = fhp_->lv_sum[sub_compact->compaction->output_level()];
+/*      
+      sub_compact->current_output()->meta.read_cnt = fhp_->read_cnt;
+      sub_compact->current_output()->meta.key_cnt = key_cnt;
+      sub_compact->current_output()->meta.read_rate = (double)sub_compact->current_output()->meta.read_sum / (double)sub_compact->current_output()->meta.key_cnt / (double)sub_compact->current_output()->meta.read_cnt;
+*/      
+//      printf("%.10lf %lu %lu %lu\n",sub_compact->current_output()->meta.read_rate , sub_compact->current_output()->meta.read_sum , sub_compact->current_output()->meta.key_cnt , sub_compact->current_output()->meta.read_cnt);
+
     }
 	}
   }
@@ -1294,6 +1316,13 @@ if (hit > hit_max)
   // Call FinishCompactionOutputFile() even if status is not ok: it needs to
   // close the output file.
   if (sub_compact->builder != nullptr) {
+/*
+	  sub_compact->current_output()->meta.read_cnt = fhp_->read_cnt;
+      sub_compact->current_output()->meta.key_cnt = key_cnt;
+      sub_compact->current_output()->meta.read_rate = (double)sub_compact->current_output()->meta.read_sum / (double)sub_compact->current_output()->meta.key_cnt / (double)sub_compact->current_output()->meta.read_cnt;
+  */    
+//      printf("%lf %lu %lu %lu\n",sub_compact->current_output()->meta.read_rate , sub_compact->current_output()->meta.read_sum , sub_compact->current_output()->meta.key_cnt , sub_compact->current_output()->meta.read_cnt);
+
     CompactionIterationStats range_del_out_stats;
     Status s = FinishCompactionOutputFile(status, sub_compact, &range_del_agg,
                                           &range_del_out_stats);
@@ -1301,6 +1330,7 @@ if (hit > hit_max)
       status = s;
     }
     RecordDroppedKeys(range_del_out_stats, &sub_compact->compaction_job_stats);
+
   }
 
   if (sub_compact->builder_upper != nullptr) { //cgmin upper
@@ -2343,7 +2373,7 @@ void CompactionJob::UpdateCompactionStats() {
     compaction_stats_.num_dropped_records =
         compaction_stats_.num_input_records - num_output_records;
   }
-  printf("input %lu output %lu drop %lu\n",compaction_stats_.num_input_records,num_output_records,compaction_stats_.num_dropped_records); //cgmin print
+//  printf("input %lu output %lu drop %lu\n",compaction_stats_.num_input_records,num_output_records,compaction_stats_.num_dropped_records); //cgmin print
 }
 
 void CompactionJob::UpdateCompactionInputStatsHelper(int* num_files,

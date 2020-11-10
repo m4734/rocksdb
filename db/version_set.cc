@@ -2815,6 +2815,29 @@ void VersionStorageInfo::UpdateFilesByCompactionPri(
     if (num > temp.size()) {
       num = temp.size();
     }
+   /* 
+    if (true)// compaction_pri == kByCompensatedSize
+    {
+    //cgmin compaction_pr
+	    if (level > 0)
+    std::sort(temp.begin(), temp.end(),
+		    [](const Fsize& f1, const Fsize& f2) -> bool {
+//		    return f1.file->write_sum * f2.file->lv_sum <
+//		    f2.file->write_sum * f1.file->lv_sum;
+		    return f1.file->read_rate <
+		    f2.file->read_rate;		 
+		    });
+	    else
+    std::sort(temp.begin(), temp.end(),
+		    [](const Fsize& f1, const Fsize& f2) -> bool {
+		    return f1.file->compensated_file_size >
+		    f2.file->compensated_file_size;		 
+		    });
+
+    }
+    else
+    */
+    {
     switch (compaction_pri) {
       case kByCompensatedSize:
         std::partial_sort(temp.begin(), temp.begin() + num, temp.end(),
@@ -2840,6 +2863,7 @@ void VersionStorageInfo::UpdateFilesByCompactionPri(
         break;
       default:
         assert(false);
+    }
     }
     assert(temp.size() == files.size());
 

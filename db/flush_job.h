@@ -43,6 +43,8 @@
 #include "util/stop_watch.h"
 #include "util/thread_local.h"
 
+#include "db/fh.h" //cgmin fhp
+
 namespace ROCKSDB_NAMESPACE {
 
 class DBImpl;
@@ -72,7 +74,7 @@ class FlushJob {
            CompressionType output_compression, Statistics* stats,
            EventLogger* event_logger, bool measure_io_stats,
            const bool sync_output_directory, const bool write_manifest,
-           Env::Priority thread_pri);
+           Env::Priority thread_pri,FH* fhp=nullptr); //cgmin fhp
 
   ~FlushJob();
 
@@ -158,6 +160,8 @@ class FlushJob {
   bool pick_memtable_called;
   Env::Priority thread_pri_;
   IOStatus io_status_;
+
+  FH* _fhp; //cgmin fhp
 };
 
 }  // namespace ROCKSDB_NAMESPACE

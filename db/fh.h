@@ -49,6 +49,16 @@ class FH
 		int compaction_count[10];
 		void adjust_hit_limit(int avg_hit,int level);
 
+		std::atomic<uint64_t> lv_sum[10];
+		uint32_t*** lfv;
+		int lv;
+		void LevelAdd(int level,const Slice& key);
+		uint32_t LevelGet(int level,const Slice& key);
+		uint32_t LevelAddGet(int level,const Slice& key);
+
+//		std::atomic<uint64_t> flush_sum;
+//		std::atomic<uint64_t> read_cnt;
+		uint64_t read_cnt;
 };
 
 }

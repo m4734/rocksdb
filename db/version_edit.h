@@ -149,7 +149,7 @@ struct FileMetaData {
                const SequenceNumber& largest_seq, bool marked_for_compact,
                uint64_t oldest_blob_file, uint64_t _oldest_ancester_time,
                uint64_t _file_creation_time, const std::string& _file_checksum,
-               const std::string& _file_checksum_func_name)
+               const std::string& _file_checksum_func_name) //, uint64_t _read_sum=0, uint64_t _key_cnt=0, uint64_t _read_cnt=0, double _read_rate=0)//,uint64_t _write_sum = 0,uint64_t _lv_sum = 999999999) //cgmin meta
       : fd(file, file_path_id, file_size, smallest_seq, largest_seq),
         smallest(smallest_key),
         largest(largest_key),
@@ -158,7 +158,7 @@ struct FileMetaData {
         oldest_ancester_time(_oldest_ancester_time),
         file_creation_time(_file_creation_time),
         file_checksum(_file_checksum),
-        file_checksum_func_name(_file_checksum_func_name) {
+        file_checksum_func_name(_file_checksum_func_name) { //, read_sum(_read_sum),key_cnt(_key_cnt),read_cnt(_read_cnt),read_rate(_read_rate) { //,write_sum(_write_sum),lv_sum(_lv_sum)  { //cgmin meta
     TEST_SYNC_POINT_CALLBACK("FileMetaData::FileMetaData", this);
   }
 
@@ -206,6 +206,17 @@ struct FileMetaData {
   }
 
   bool upper = false; //cgmin meta
+/*
+  uint64_t read_sum = 0;
+  uint64_t key_cnt = 1;
+  uint64_t read_cnt = 1;
+  double read_rate = 0;
+  */
+//  uint64_t flush_sum=999999999;
+
+//  uint64_t write_sum = 0;
+//  uint64_t lv_sum=999999999;
+  
 };
 
 // A compressed copy of file meta data that just contain minimum data needed
@@ -327,14 +338,14 @@ class VersionEdit {
                const SequenceNumber& largest_seqno, bool marked_for_compaction,
                uint64_t oldest_blob_file_number, uint64_t oldest_ancester_time,
                uint64_t file_creation_time, const std::string& file_checksum,
-               const std::string& file_checksum_func_name) {
+               const std::string& file_checksum_func_name) {//, uint64_t read_sum=0, uint64_t key_cnt=0, uint64_t read_cnt=0, double read_rate=0) { //cgmin meta
     assert(smallest_seqno <= largest_seqno);
     new_files_.emplace_back(
         level, FileMetaData(file, file_path_id, file_size, smallest, largest,
                             smallest_seqno, largest_seqno,
                             marked_for_compaction, oldest_blob_file_number,
                             oldest_ancester_time, file_creation_time,
-                            file_checksum, file_checksum_func_name));
+                            file_checksum, file_checksum_func_name));//,read_sum,key_cnt,read_cnt,read_rate)); //cgmin meta
   }
 
   void AddFile(int level, const FileMetaData& f) {

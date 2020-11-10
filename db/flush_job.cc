@@ -97,7 +97,7 @@ FlushJob::FlushJob(const std::string& dbname, ColumnFamilyData* cfd,
                    CompressionType output_compression, Statistics* stats,
                    EventLogger* event_logger, bool measure_io_stats,
                    const bool sync_output_directory, const bool write_manifest,
-                   Env::Priority thread_pri)
+                   Env::Priority thread_pri, FH* fhp) //cgmin fhp
     : dbname_(dbname),
       cfd_(cfd),
       db_options_(db_options),
@@ -123,7 +123,7 @@ FlushJob::FlushJob(const std::string& dbname, ColumnFamilyData* cfd,
       edit_(nullptr),
       base_(nullptr),
       pick_memtable_called(false),
-      thread_pri_(thread_pri) {
+      thread_pri_(thread_pri),_fhp(fhp) { //cgmin fhp
   // Update the thread status to indicate flush.
   ReportStartedFlush();
   TEST_SYNC_POINT("FlushJob::FlushJob()");
@@ -393,7 +393,7 @@ Status FlushJob::WriteLevel0Table() {
           mutable_cf_options_.paranoid_file_checks, cfd_->internal_stats(),
           TableFileCreationReason::kFlush, &io_s, event_logger_,
           job_context_->job_id, Env::IO_HIGH, &table_properties_, 0 /* level */,
-          creation_time, oldest_key_time, write_hint, current_time);
+          creation_time, oldest_key_time, write_hint, current_time,_fhp); //cgmin fhp
       if (!io_s.ok()) {
         io_status_ = io_s;
       }
@@ -429,7 +429,7 @@ Status FlushJob::WriteLevel0Table() {
                    meta_.fd.smallest_seqno, meta_.fd.largest_seqno,
                    meta_.marked_for_compaction, meta_.oldest_blob_file_number,
                    meta_.oldest_ancester_time, meta_.file_creation_time,
-                   meta_.file_checksum, meta_.file_checksum_func_name);
+                   meta_.file_checksum, meta_.file_checksum_func_name);//,meta_.read_sum,meta_.key_cnt,meta_.read_cnt,meta_.read_rate); //cgmin meta
   }
 #ifndef ROCKSDB_LITE
   // Piggyback FlushJobInfo on the first first flushed memtable.
