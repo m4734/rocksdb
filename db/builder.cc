@@ -168,9 +168,9 @@ Status BuildTable(
       
 if (fhp != nullptr)
 {
-//	meta->write_sum+=fhp->LevelAddGet(0,key); //cgmin level0 addget
+	meta->write_sum+=fhp->LevelAddGet(0,key); //cgmin level0 addget
 //	meta->read_sum+=fhp->get(key);
-//	++meta->key_cnt;
+	++meta->key_cnt;
 	if (false)
 		printf("test\n");
 }
@@ -204,11 +204,12 @@ else
       builder->Abandon();
     } else {
       s = builder->Finish();
-      /*
+      
       if (fhp != nullptr)
       {
-//	      fhp->lv_sum[0]+=meta->write_sum; //cgmin write sum
-//	      meta->lv_sum = fhp->lv_sum[0];
+	      fhp->lv_sum[0]+=meta->key_cnt; //cgmin lv sum
+	      meta->lv_sum = fhp->lv_sum[0];
+	      meta->write_rate = (double)meta->write_sum/(double)meta->key_cnt/(double)meta->lv_sum;
 //	      printf("flush write sum %lu\n",meta->write_sum);
 //	      ++fhp->flush_sum;
 //	      meta->flush_sum = flush_sum;
@@ -217,7 +218,7 @@ else
 //	      meta->read_rate = (double)builder->FileSize()*-1;
 //	      meta->read_rate = 0;
       }
-      */
+      
     }
     *io_status = builder->io_status();
 

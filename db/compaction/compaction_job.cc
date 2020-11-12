@@ -493,8 +493,8 @@ void CompactionJob::Prepare() {
   size_t num_files = flevel->num_files;
   c->smallest_key_upper_ = flevel->files[0].smallest_key;
   c->largest_key_upper_ = flevel->files[num_files-1].largest_key;
-//printf("write_sum %lu / %lu\n",flevel->files[0].file_metadata->write_sum,fhp_->lv_sum[c->start_level()].load());
-  printf("read sum %lu key cnt %lu read cnt %lu read rate %.10lf\n",flevel->files[0].file_metadata->read_sum,flevel->files[0].file_metadata->key_cnt,flevel->files[0].file_metadata->read_cnt,flevel->files[0].file_metadata->read_rate);
+printf("write_rate %.10lf / %lu\n",flevel->files[0].file_metadata->write_rate,fhp_->lv_sum[c->start_level()].load());
+//  printf("read sum %lu key cnt %lu read cnt %lu read rate %.10lf\n",flevel->files[0].file_metadata->read_sum,flevel->files[0].file_metadata->key_cnt,flevel->files[0].file_metadata->read_cnt,flevel->files[0].file_metadata->read_rate);
 }
 
 struct RangeWithSize {
@@ -1180,8 +1180,8 @@ if (hit > hit_max)
       }
     }
 
-//	sub_compact->current_output()->meta.write_sum+=fhp_->LevelAddGet(sub_compact->compaction->output_level(),key);
-    sub_compact->current_output()->meta.read_sum+=fhp_->get(key); // opened //cgmin read_sum
+	sub_compact->current_output()->meta.write_sum+=fhp_->LevelAddGet(sub_compact->compaction->output_level(),key);
+//    sub_compact->current_output()->meta.read_sum+=fhp_->get(key); // opened //cgmin read_sum
 
     assert(sub_compact->builder != nullptr);
     assert(sub_compact->current_output() != nullptr);
@@ -1242,12 +1242,16 @@ if (hit > hit_max)
       RecordDroppedKeys(range_del_out_stats,
                         &sub_compact->compaction_job_stats);
 //      fhp_->lv_sum[sub_compact->compaction->output_level()]+=sub_compact->current_output()->meta.write_sum;
+      fhp_->lv_sum[sub_compact->compaction->output_level()]+=key_cnt;
+
 //      sub_compact->current_output()->meta.lv_sum = fhp_->lv_sum[sub_compact->compaction->output_level()];
       
-      sub_compact->current_output()->meta.read_cnt = fhp_->read_cnt;
+//      sub_compact->current_output()->meta.read_cnt = fhp_->read_cnt;
       sub_compact->current_output()->meta.key_cnt = key_cnt;
-      sub_compact->current_output()->meta.read_rate = (double)sub_compact->current_output()->meta.read_sum / (double)sub_compact->current_output()->meta.key_cnt / (double)sub_compact->current_output()->meta.read_cnt;
-      
+//      sub_compact->current_output()->meta.read_rate = (double)sub_compact->current_output()->meta.read_sum / (double)sub_compact->current_output()->meta.key_cnt / (double)sub_compact->current_output()->meta.read_cnt;
+      sub_compact->current_output()->meta.write_rate = (double)sub_compact->current_output()->meta.write_sum/(double)key_cnt/(double)fhp_->lv_sum[sub_compact->compaction->output_level()];
+
+//     printf("wr %.10lf\n",sub_compact->current_output()->meta.write_rate);
 //      printf("%.10lf %lu %lu %lu\n",sub_compact->current_output()->meta.read_rate , sub_compact->current_output()->meta.read_sum , sub_compact->current_output()->meta.key_cnt , sub_compact->current_output()->meta.read_cnt);
 
     }
@@ -1303,6 +1307,7 @@ if (hit > hit_max)
       sub_compact->outputs.size() == 0 && !range_del_agg.IsEmpty()) {
     // handle subcompaction containing only range deletions
     status = OpenCompactionOutputFile(sub_compact);
+    key_cnt=1;//cgmin ??
   }
 
   //cgmin ???
@@ -1317,10 +1322,13 @@ if (hit > hit_max)
   // close the output file.
   if (sub_compact->builder != nullptr) {
 
-	  sub_compact->current_output()->meta.read_cnt = fhp_->read_cnt;
+//	  sub_compact->current_output()->meta.read_cnt = fhp_->read_cnt;
       sub_compact->current_output()->meta.key_cnt = key_cnt;
-      sub_compact->current_output()->meta.read_rate = (double)sub_compact->current_output()->meta.read_sum / (double)sub_compact->current_output()->meta.key_cnt / (double)sub_compact->current_output()->meta.read_cnt;
-      
+//      sub_compact->current_output()->meta.read_rate = (double)sub_compact->current_output()->meta.read_sum / (double)sub_compact->current_output()->meta.key_cnt / (double)sub_compact->current_output()->meta.read_cnt;
+      fhp_->lv_sum[sub_compact->compaction->output_level()]+=key_cnt;
+
+            sub_compact->current_output()->meta.write_rate = (double)sub_compact->current_output()->meta.write_sum/(double)key_cnt/(double)fhp_->lv_sum[sub_compact->compaction->output_level()];
+
 //      printf("%lf %lu %lu %lu\n",sub_compact->current_output()->meta.read_rate , sub_compact->current_output()->meta.read_sum , sub_compact->current_output()->meta.key_cnt , sub_compact->current_output()->meta.read_cnt);
 
     CompactionIterationStats range_del_out_stats;

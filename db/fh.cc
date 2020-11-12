@@ -57,7 +57,8 @@ namespace ROCKSDB_NAMESPACE {
 //		flush_sum=0;
 		read_cnt = 1;
 
-
+		for (i=0;i<lv;i++)
+			lv_sum[i] = 1;
 //		t = std::thread(run,&exit,&queue_start,&queue_ready,queue_size,sleep_time,&string_array,&size_array,&fv,fs,bs);
 		printf("fh s\n");
 	}

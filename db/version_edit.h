@@ -144,17 +144,17 @@ struct FileMetaData {
 
   bool upper = false; //cgmin meta
 
-  uint64_t read_sum = 0;
+//  uint64_t read_sum = 0;
   uint64_t key_cnt = 1;
-  uint64_t read_cnt = 1;
-  double read_rate = 0;
+//  uint64_t read_cnt = 1;
+//  double read_rate = 0;
   
 //  uint64_t flush_sum=999999999;
 
-//  uint64_t write_sum = 0;
-//  uint64_t lv_sum=999999999;
+  uint64_t write_sum = 0;
+  uint64_t lv_sum=1;
  
-
+double write_rate=0;
 
   FileMetaData() = default;
 
@@ -173,7 +173,7 @@ struct FileMetaData {
         oldest_ancester_time(_oldest_ancester_time),
         file_creation_time(_file_creation_time),
         file_checksum(_file_checksum),
-        file_checksum_func_name(_file_checksum_func_name),read_sum(0),key_cnt(1),read_cnt(1),read_rate(0) { //, read_sum(_read_sum),key_cnt(_key_cnt),read_cnt(_read_cnt),read_rate(_read_rate) { //,write_sum(_write_sum),lv_sum(_lv_sum)  { //cgmin meta
+        file_checksum_func_name(_file_checksum_func_name) { //,read_sum(0),key_cnt(1),read_cnt(1),read_rate(0) { //, read_sum(_read_sum),key_cnt(_key_cnt),read_cnt(_read_cnt),read_rate(_read_rate) { //,write_sum(_write_sum),lv_sum(_lv_sum)  { //cgmin meta
     TEST_SYNC_POINT_CALLBACK("FileMetaData::FileMetaData", this);
   }
 
